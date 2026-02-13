@@ -1,0 +1,10 @@
+{
+  "name": "career-coordination-mcp",
+  "version-string": "0.1.0",
+  "description": "Deterministic, auditable job search coordination scaffold",
+  "dependencies": [
+    "nlohmann-json",
+    "fmt",
+    "catch2"
+  ]
+}
