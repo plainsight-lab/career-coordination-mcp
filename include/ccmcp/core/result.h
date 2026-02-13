@@ -5,6 +5,9 @@
 
 namespace ccmcp::core {
 
+// Error enumerations following E.14 (use purpose-designed types as error indicators).
+// These domain-specific errors carry semantic meaning beyond built-in error codes.
+
 enum class GovernanceError {
   kInvalidTransition,
   kPolicyViolation,
@@ -23,6 +26,10 @@ enum class ParseError {
   kUnsupportedVersion,
 };
 
+// Result<T, E> follows C++ Core Guidelines E.27: systematic error handling without exceptions.
+// This type encodes success (T) or failure (E) explicitly, preventing ignored errors.
+// Usage: return Result<Value, ErrorType>::ok(val) or Result<Value, ErrorType>::err(error).
+// The has_value() check makes error handling mandatory and visible at call sites.
 template <typename T, typename E>
 class Result {
  public:

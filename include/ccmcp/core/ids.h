@@ -6,34 +6,38 @@
 
 namespace ccmcp::core {
 
+// Strong ID types following C++ Core Guidelines C.11 (Make concrete types regular).
+// These are "vocabulary types" that prevent ID confusion and enable type-safe APIs.
+// Using struct (not class) per C.2: members can vary independently, no invariants.
+
 struct AtomId {
   std::string value;
-  bool operator==(const AtomId&) const = default;
+  auto operator<=>(const AtomId&) const = default;  // C++20: generates ==, !=, <, <=, >, >=
 };
 
 struct OpportunityId {
   std::string value;
-  bool operator==(const OpportunityId&) const = default;
+  auto operator<=>(const OpportunityId&) const = default;
 };
 
 struct ContactId {
   std::string value;
-  bool operator==(const ContactId&) const = default;
+  auto operator<=>(const ContactId&) const = default;
 };
 
 struct InteractionId {
   std::string value;
-  bool operator==(const InteractionId&) const = default;
+  auto operator<=>(const InteractionId&) const = default;
 };
 
 struct ResumeId {
   std::string value;
-  bool operator==(const ResumeId&) const = default;
+  auto operator<=>(const ResumeId&) const = default;
 };
 
 struct TraceId {
   std::string value;
-  bool operator==(const TraceId&) const = default;
+  auto operator<=>(const TraceId&) const = default;
 };
 
 inline std::string make_id(const char* prefix) {

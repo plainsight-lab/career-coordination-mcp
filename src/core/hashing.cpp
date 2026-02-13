@@ -11,7 +11,9 @@ std::uint64_t stable_hash64(const std::string_view input) {
   constexpr std::uint64_t kPrime = 1099511628211ull;
 
   std::uint64_t hash = kOffset;
-  for (const unsigned char c : input) {
+  for (const char ch : input) {
+    // Explicit cast to unsigned char to avoid sign-extension (ES.46: avoid narrowing conversions).
+    const auto c = static_cast<unsigned char>(ch);
     hash ^= static_cast<std::uint64_t>(c);
     hash *= kPrime;
   }
