@@ -8,34 +8,33 @@ namespace ccmcp::core {
 
 struct AtomId {
   std::string value;
+  bool operator==(const AtomId&) const = default;
 };
 
 struct OpportunityId {
   std::string value;
+  bool operator==(const OpportunityId&) const = default;
 };
 
 struct ContactId {
   std::string value;
+  bool operator==(const ContactId&) const = default;
 };
 
 struct InteractionId {
   std::string value;
+  bool operator==(const InteractionId&) const = default;
 };
 
 struct ResumeId {
   std::string value;
+  bool operator==(const ResumeId&) const = default;
 };
 
 struct TraceId {
   std::string value;
+  bool operator==(const TraceId&) const = default;
 };
-
-inline bool operator==(const AtomId&, const AtomId&) = default;
-inline bool operator==(const OpportunityId&, const OpportunityId&) = default;
-inline bool operator==(const ContactId&, const ContactId&) = default;
-inline bool operator==(const InteractionId&, const InteractionId&) = default;
-inline bool operator==(const ResumeId&, const ResumeId&) = default;
-inline bool operator==(const TraceId&, const TraceId&) = default;
 
 inline std::string make_id(const char* prefix) {
   static std::atomic<unsigned long long> counter{0};

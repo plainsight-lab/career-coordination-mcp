@@ -1,29 +1,265 @@
-# career-coordination-mcp
+# Career Coordination MCP
 
-Deterministic, auditable job-search coordination scaffolding in C++20.
+Deterministic inference enhanced job search coordination.
 
-## Scope (v0.1 scaffold)
+career-coordination-mcp is a C++20 reference implementation of a governance-first career coordination engine exposed via the Model Context Protocol (MCP).
 
-This repository provides clean boundaries and stubs for:
-- Experience atoms
-- Opportunities and requirements
-- Contacts and interactions
-- Resume composition artifacts
-- Constitutional validation engine
-- Deterministic matching and append-only audit logging
+It is designed to:
+- Match structured opportunities against immutable experience atoms
+- Compose resumes constitutionally
+- Enforce outreach state machine rules
+- Maintain a complete interaction audit log
+- Prevent ungrounded claims
+- Treat LLM output as untrusted until validated
 
-LLM use is optional and out of authority scope. Canonical decisions are intended to remain deterministic and explainable.
+This project is deterministic by design.
 
-## Build
+---
 
-```bash
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build
+## Philosophy
+
+Modern AI systems optimize for fluency.
+
+Career coordination requires integrity.
+
+This engine follows a strict posture:
+- Deterministic rules decide structure.
+- LLMs (if used) draft prose only.
+- Validation gates all outputs.
+- Audit logs preserve explainability.
+- No autonomous actions occur without explicit human authority.
+
+Every output must be attributable to:
+- specific experience atoms,
+- explicit rules,
+- and a versioned constitution.
+
+---
+
+## Why Apache 2.0?
+
+This project is licensed under the Apache License 2.0.
+
+We chose Apache over MIT because:
+- It includes an explicit patent grant.
+- It includes patent retaliation protections.
+- It remains fully permissive and commercial-friendly.
+- It supports ecosystem growth without copyleft constraints.
+
+The goal is to contribute governance-grade infrastructure back to the community while protecting contributors from patent ambiguity.
+
+You are free to:
+- Use
+- Modify
+- Embed
+- Commercialize
+- Fork
+
+This code is infrastructure, not a trap.
+
+---
+
+## Architecture Overview
+
+The system is structured around five core domains:
+
+### 1. Experience Atoms
+
+Immutable, verifiable capability facts.
+
+Examples:
+- Enterprise architecture leadership
+- AI governance design
+- Systems-level security implementation
+
+Atoms are the only allowed source of resume claims.
+
+---
+
+### 2. Opportunities
+
+Structured representations of job postings with normalized requirements.
+
+Opportunity matching is deterministic and explainable.
+
+---
+
+### 3. Resume Composition
+
+Resume generation is constitutional:
+- Selected atoms must map to opportunity requirements.
+- No ungrounded claims are permitted.
+- Output must pass validation before acceptance.
+
+---
+
+### 4. Outreach State Machine
+
+Contact interactions are governed by a finite state machine:
+- No duplicate first-touch.
+- No outreach if flagged “do not contact.”
+- Every transition is logged.
+
+---
+
+### 5. Constitutional Validation Engine (CVE)
+
+The core enforcement mechanism.
+
+The CVE:
+- Runs deterministic rule packs.
+- Produces machine-readable validation reports.
+- Supports override only when constitution permits.
+- Emits append-only audit events.
+
+No artifact is accepted without validation.
+
+---
+
+## Project Structure
+
+```text
+career-coordination-mcp/
+├── include/ccmcp/
+│   ├── core/              # IDs, Result<T>, utilities
+│   ├── domain/            # Atoms, Opportunities, Contacts, Resume
+│   ├── constitution/      # Rules, ValidationEngine, Findings
+│   ├── storage/           # Audit log interfaces
+│   └── matching/          # Scoring + matcher stubs
+├── src/                   # Implementations
+├── apps/ccmcp_cli/        # Minimal CLI reference app
+├── tests/                 # Unit tests
+└── docs/                  # Architecture and governance specs
 ```
 
-## Run CLI
+## Current Scope (v0.1)
+
+- Domain model scaffolding
+- Deterministic matching stub
+- Constitutional validation engine structure
+- In-memory audit log
+- CLI demonstration
+- SQLite/Redis/LanceDB deferred to later versions
+
+Embeddings and advanced semantic matching are planned for v0.2+ but not required for v0.1.
+
+---
+
+## Non-Goals
+
+- Autonomous job application bots
+- Automated emailing without approval
+- Agentic browsing loops
+- Undocumented state transitions
+- Vector-only matching
+
+This is governance infrastructure, not an automation toy.
+
+---
+
+## Building
+
+### Prerequisites
+
+- CMake 3.21+
+- C++20 compatible compiler (Clang, GCC, or MSVC)
+- vcpkg installed at `~/vcpkg` or `$VCPKG_ROOT`
+
+### Build Instructions
+
+The project uses vcpkg manifest mode for deterministic dependency resolution.
 
 ```bash
-./build/apps/ccmcp_cli/ccmcp_cli
+# Configure with vcpkg toolchain
+cmake -S . -B build-vcpkg \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/vcpkg.cmake
+
+# Build
+cmake --build build-vcpkg
+
+# Run CLI demo
+./build-vcpkg/apps/ccmcp_cli/ccmcp_cli
+
+# Run tests
+./build-vcpkg/tests/ccmcp_tests
 ```
+
+Dependencies (resolved automatically via vcpkg.json):
+- nlohmann-json (JSON serialization)
+- fmt (formatting)
+- Catch2 (testing)
+
+## Deterministic Inference Enhanced
+
+This project embodies a simple principle:
+
+Deterministic structure first.
+Model assistance second.
+Human authority always.
+
+The engine can integrate LLM providers later, but:
+- LLM output is treated as untrusted input.
+- Validation is mandatory.
+- No new facts may be introduced without grounding.
+- All claims must trace back to canonical atoms.
+
+---
+
+## Roadmap
+
+v0.1
+- Deterministic matcher
+- Constitutional validation scaffolding
+- Audit logging
+- CLI demo
+
+v0.2
+- Hybrid lexical + embedding retrieval
+- SQLite persistence
+- Redis-backed state machine
+- MCP protocol server
+
+v0.3
+- Structured resume patching
+- Interaction analytics
+- Cross-document reasoning
+
+---
+
+## Contributing
+
+Contributions are welcome if they preserve:
+- Determinism
+- Auditability
+- Explicit governance boundaries
+- Clear error surfaces
+- Reproducibility
+
+Please avoid adding:
+- Hidden network calls
+- Agent loops
+- Non-deterministic decision paths
+
+All contributions must align with the constitutional posture of the project.
+
+---
+
+## License
+
+Apache License 2.0
+Copyright (c) 2026 PlainSight Labs
+
+See LICENSE and NOTICE for details.
+
+---
+
+## Final Note
+
+This is not just a job search tool.
+
+It is a reference implementation of:
+- Deterministic inference
+- Constitutional validation
+- Auditable decision systems
+
+It is infrastructure for reasoning under constraint.

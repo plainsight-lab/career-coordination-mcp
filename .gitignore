@@ -1,7 +1,23 @@
+# Build directories
 /build/
+/build-vcpkg/
+/vcpkg_installed/
+
+# Build artifacts (if generated at root)
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+*.a
+*.o
+*.so
+*.dylib
+
+# IDE and editor
 /.cache/
 /.idea/
 /.vscode/
 *.swp
 *.swo
+
+# macOS
 .DS_Store
