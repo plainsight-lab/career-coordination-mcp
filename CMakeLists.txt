@@ -20,6 +20,7 @@ find_package(Catch2 CONFIG REQUIRED)
 add_library(ccmcp
   src/core/hashing.cpp
   src/domain/experience_atom.cpp
+  src/domain/requirement.cpp
   src/domain/opportunity.cpp
   src/domain/contact.cpp
   src/domain/interaction.cpp

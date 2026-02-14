@@ -2,6 +2,7 @@ add_executable(ccmcp_tests
   test_ids.cpp
   test_validation_engine.cpp
   test_matching_stub.cpp
+  test_domain_schema.cpp
 )
 
 target_link_libraries(ccmcp_tests

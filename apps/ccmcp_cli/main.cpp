@@ -18,8 +18,8 @@ int main() {
   opportunity.role_title = "Principal Architect";
   opportunity.source = "manual";
   opportunity.requirements = {
-      {"req-1", ccmcp::domain::RequirementType::kSkill, "C++20"},
-      {"req-2", ccmcp::domain::RequirementType::kDomain, "Architecture"},
+      ccmcp::domain::Requirement{"C++20", {"cpp", "cpp20"}, true},
+      ccmcp::domain::Requirement{"Architecture experience", {"architecture"}, true},
   };
 
   std::vector<ccmcp::domain::ExperienceAtom> atoms;
@@ -28,13 +28,15 @@ int main() {
                    "Architecture Leadership",
                    "Led architecture decisions",
                    {"architecture", "governance"},
-                   true});
+                   true,
+                   {}});
   atoms.push_back({ccmcp::core::new_atom_id(),
                    "cpp",
                    "Modern C++",
                    "Built C++20 systems",
                    {"cpp20", "systems"},
-                   false});
+                   false,
+                   {}});
 
   ccmcp::matching::Matcher matcher;
   const auto report = matcher.evaluate(opportunity, atoms);
