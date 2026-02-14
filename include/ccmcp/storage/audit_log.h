@@ -1,9 +1,9 @@
 #pragma once
 
+#include "ccmcp/storage/audit_event.h"
+
 #include <string>
 #include <vector>
-
-#include "ccmcp/storage/audit_event.h"
 
 namespace ccmcp::storage {
 

@@ -14,9 +14,8 @@ class ValidationEngine {
 
   // Con.2: validate() is const - it performs validation without modifying engine state.
   // The engine is immutable after construction for deterministic, thread-safe validation.
-  [[nodiscard]] ValidationReport validate(
-      const ArtifactEnvelope& envelope,
-      const ValidationContext& context) const;
+  [[nodiscard]] ValidationReport validate(const ArtifactEnvelope& envelope,
+                                          const ValidationContext& context) const;
 
  private:
   Constitution constitution_;

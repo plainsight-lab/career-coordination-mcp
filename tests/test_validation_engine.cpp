@@ -1,6 +1,6 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ccmcp/constitution/validation_engine.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Default validation engine returns deterministic stub finding", "[validation]") {
   const auto constitution = ccmcp::constitution::make_default_constitution();

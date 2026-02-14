@@ -1,8 +1,8 @@
 #pragma once
 
-#include <string>
-
 #include "ccmcp/core/ids.h"
+
+#include <string>
 
 namespace ccmcp::domain {
 

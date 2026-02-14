@@ -1,9 +1,9 @@
 #pragma once
 
+#include "ccmcp/constitution/finding.h"
+
 #include <string>
 #include <vector>
-
-#include "ccmcp/constitution/finding.h"
 
 namespace ccmcp::constitution {
 

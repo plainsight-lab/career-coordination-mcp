@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "ccmcp/constitution/validation_report.h"
 #include "ccmcp/core/ids.h"
+
+#include <string>
+#include <vector>
 
 namespace ccmcp::domain {
 

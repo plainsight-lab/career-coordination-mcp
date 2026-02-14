@@ -1,9 +1,9 @@
 #pragma once
 
+#include "ccmcp/core/ids.h"
+
 #include <string>
 #include <vector>
-
-#include "ccmcp/core/ids.h"
 
 namespace ccmcp::domain {
 

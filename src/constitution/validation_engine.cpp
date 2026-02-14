@@ -1,17 +1,16 @@
 #include "ccmcp/constitution/validation_engine.h"
 
-#include <utility>
-
 #include "ccmcp/constitution/finding.h"
+
+#include <utility>
 
 namespace ccmcp::constitution {
 
 ValidationEngine::ValidationEngine(Constitution constitution)
     : constitution_(std::move(constitution)) {}
 
-ValidationReport ValidationEngine::validate(
-    const ArtifactEnvelope& envelope,
-    const ValidationContext& context) const {
+ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
+                                            const ValidationContext& context) const {
   ValidationReport report{};
   report.report_id = "report-" + envelope.artifact_id;
   report.trace_id = context.trace_id;
@@ -28,9 +27,11 @@ ValidationReport ValidationEngine::validate(
     for (const auto& finding : findings) {
       if (finding.severity == FindingSeverity::kBlock) {
         report.status = ValidationStatus::kBlocked;
-      } else if (finding.severity == FindingSeverity::kFail && report.status != ValidationStatus::kBlocked) {
+      } else if (finding.severity == FindingSeverity::kFail &&
+                 report.status != ValidationStatus::kBlocked) {
         report.status = ValidationStatus::kRejected;
-      } else if (finding.severity == FindingSeverity::kWarn && report.status == ValidationStatus::kAccepted) {
+      } else if (finding.severity == FindingSeverity::kWarn &&
+                 report.status == ValidationStatus::kAccepted) {
         report.status = ValidationStatus::kNeedsReview;
       }
       report.findings.push_back(finding);

@@ -48,11 +48,23 @@ inline std::string make_id(const char* prefix) {
   return std::string(prefix) + "-" + std::to_string(micros) + "-" + std::to_string(c);
 }
 
-inline AtomId new_atom_id() { return AtomId{make_id("atom")}; }
-inline OpportunityId new_opportunity_id() { return OpportunityId{make_id("opp")}; }
-inline ContactId new_contact_id() { return ContactId{make_id("contact")}; }
-inline InteractionId new_interaction_id() { return InteractionId{make_id("interaction")}; }
-inline ResumeId new_resume_id() { return ResumeId{make_id("resume")}; }
-inline TraceId new_trace_id() { return TraceId{make_id("trace")}; }
+inline AtomId new_atom_id() {
+  return AtomId{make_id("atom")};
+}
+inline OpportunityId new_opportunity_id() {
+  return OpportunityId{make_id("opp")};
+}
+inline ContactId new_contact_id() {
+  return ContactId{make_id("contact")};
+}
+inline InteractionId new_interaction_id() {
+  return InteractionId{make_id("interaction")};
+}
+inline ResumeId new_resume_id() {
+  return ResumeId{make_id("resume")};
+}
+inline TraceId new_trace_id() {
+  return TraceId{make_id("trace")};
+}
 
 }  // namespace ccmcp::core

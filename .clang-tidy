@@ -1,0 +1,91 @@
+# clang-tidy configuration for career-coordination-mcp
+# Enforces C++ Core Guidelines, modern C++20 practices, and project conventions
+# Version: clang-tidy 14+
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  portability-*,
+  clang-analyzer-*,
+  misc-*,
+  -misc-non-private-member-variables-in-classes,
+  concurrency-*
+
+WarningsAsErrors: ''
+
+CheckOptions:
+  # Naming conventions (matches Google Style Guide with project adjustments)
+  - key:             readability-identifier-naming.NamespaceCase
+    value:           lower_case
+  - key:             readability-identifier-naming.ClassCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.StructCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.FunctionCase
+    value:           lower_case
+  - key:             readability-identifier-naming.VariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.ParameterCase
+    value:           lower_case
+  - key:             readability-identifier-naming.MemberCase
+    value:           lower_case
+  - key:             readability-identifier-naming.MemberSuffix
+    value:           _
+  - key:             readability-identifier-naming.ConstantCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.ConstantPrefix
+    value:           k
+  - key:             readability-identifier-naming.EnumConstantCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.EnumConstantPrefix
+    value:           k
+  - key:             readability-identifier-naming.GlobalConstantCase
+    value:           CamelCase
+  - key:             readability-identifier-naming.GlobalConstantPrefix
+    value:           k
+
+  # Core Guidelines enforcement
+  - key:             cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value:           '1'
+  - key:             cppcoreguidelines-explicit-virtual-functions.IgnoreDestructors
+    value:           '1'
+
+  # Performance
+  - key:             performance-move-const-arg.CheckTriviallyCopyableMove
+    value:           '1'
+
+  # Readability
+  - key:             readability-function-size.LineThreshold
+    value:           '100'
+  - key:             readability-function-size.StatementThreshold
+    value:           '50'
+  - key:             readability-function-size.BranchThreshold
+    value:           '10'
+  - key:             readability-braces-around-statements.ShortStatementLines
+    value:           '0'
+
+  # Modernize
+  - key:             modernize-use-auto.MinTypeNameLength
+    value:           '8'
+  - key:             modernize-use-default-member-init.UseAssignment
+    value:           '1'
+
+# Header filter (only check our own code, not dependencies)
+HeaderFilterRegex: 'include/ccmcp/.*'
+
+# System headers to ignore
+SystemHeaders: false

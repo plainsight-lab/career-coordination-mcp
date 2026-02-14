@@ -1,9 +1,9 @@
 #pragma once
 
+#include "ccmcp/constitution/rule.h"
+
 #include <string>
 #include <vector>
-
-#include "ccmcp/constitution/rule.h"
 
 namespace ccmcp::constitution {
 

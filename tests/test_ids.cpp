@@ -1,6 +1,6 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ccmcp/core/ids.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("ID generators produce non-empty values", "[ids]") {
   const auto atom_id = ccmcp::core::new_atom_id();

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <vector>
-
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
+
+#include <vector>
 
 namespace ccmcp::storage {
 

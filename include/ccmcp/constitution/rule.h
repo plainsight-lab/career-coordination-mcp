@@ -1,10 +1,10 @@
 #pragma once
 
+#include "ccmcp/constitution/finding.h"
+
 #include <functional>
 #include <string>
 #include <vector>
-
-#include "ccmcp/constitution/finding.h"
 
 namespace ccmcp::constitution {
 

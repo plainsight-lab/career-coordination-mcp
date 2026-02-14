@@ -1,11 +1,11 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include <vector>
-
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/matching/matcher.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <vector>
 
 TEST_CASE("Matcher stub only returns verified atoms", "[matching]") {
   ccmcp::domain::Opportunity opportunity{};

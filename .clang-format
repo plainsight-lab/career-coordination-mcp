@@ -1,0 +1,74 @@
+# clang-format configuration for career-coordination-mcp
+# Aligned with C++ Core Guidelines and project conventions
+# Version: clang-format 14+
+
+BasedOnStyle: Google
+
+# Language
+Language: Cpp
+Standard: c++20
+
+# Indentation (matches .editorconfig)
+IndentWidth: 2
+AccessModifierOffset: -1
+NamespaceIndentation: None
+ContinuationIndentWidth: 4
+
+# Braces
+BreakBeforeBraces: Attach
+Cpp11BracedListStyle: true
+
+# Line length
+ColumnLimit: 100
+
+# Includes
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Project headers first
+  - Regex:           '^"ccmcp/'
+    Priority:        1
+  # Third-party headers
+  - Regex:           '^<(fmt|nlohmann|catch2)/'
+    Priority:        2
+  # Standard library
+  - Regex:           '^<'
+    Priority:        3
+
+# Pointers and references
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+
+# Alignment
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignOperands: Align
+
+# Comments
+ReflowComments: true
+SpacesBeforeTrailingComments: 2
+
+# Penalties (encourage readable formatting)
+PenaltyBreakBeforeFirstCallParameter: 50
+PenaltyBreakComment: 300
+PenaltyBreakString: 1000
+PenaltyExcessCharacter: 1000000
+
+# Always break after function return type for definitions
+AlwaysBreakAfterReturnType: None
+
+# Keep empty lines
+MaxEmptyLinesToKeep: 1
+
+# Short blocks
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false

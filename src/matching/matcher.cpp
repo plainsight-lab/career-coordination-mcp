@@ -4,9 +4,8 @@ namespace ccmcp::matching {
 
 Matcher::Matcher(const ScoreWeights weights) : weights_(weights) {}
 
-domain::MatchReport Matcher::evaluate(
-    const domain::Opportunity& opportunity,
-    const std::vector<domain::ExperienceAtom>& atoms) const {
+domain::MatchReport Matcher::evaluate(const domain::Opportunity& opportunity,
+                                      const std::vector<domain::ExperienceAtom>& atoms) const {
   domain::MatchReport report{};
   report.opportunity_id = opportunity.opportunity_id;
   report.strategy = "deterministic_stub";
@@ -21,10 +20,9 @@ domain::MatchReport Matcher::evaluate(
   report.breakdown.lexical = 0.0;
   report.breakdown.semantic = 0.0;
   report.breakdown.bonus = 0.0;
-  report.breakdown.final_score =
-      (weights_.lexical * report.breakdown.lexical) +
-      (weights_.semantic * report.breakdown.semantic) +
-      (weights_.bonus * report.breakdown.bonus);
+  report.breakdown.final_score = (weights_.lexical * report.breakdown.lexical) +
+                                 (weights_.semantic * report.breakdown.semantic) +
+                                 (weights_.bonus * report.breakdown.bonus);
 
   return report;
 }

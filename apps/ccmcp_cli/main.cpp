@@ -1,13 +1,13 @@
-#include <iostream>
-#include <vector>
-
-#include <nlohmann/json.hpp>
-
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
 #include "ccmcp/matching/matcher.h"
+
+#include <nlohmann/json.hpp>
+
+#include <iostream>
+#include <vector>
 
 int main() {
   std::cout << "career-coordination-mcp v0.1\n";
@@ -23,10 +23,18 @@ int main() {
   };
 
   std::vector<ccmcp::domain::ExperienceAtom> atoms;
-  atoms.push_back({ccmcp::core::new_atom_id(), "architecture", "Architecture Leadership",
-                   "Led architecture decisions", {"architecture", "governance"}, true});
-  atoms.push_back({ccmcp::core::new_atom_id(), "cpp", "Modern C++",
-                   "Built C++20 systems", {"cpp20", "systems"}, false});
+  atoms.push_back({ccmcp::core::new_atom_id(),
+                   "architecture",
+                   "Architecture Leadership",
+                   "Led architecture decisions",
+                   {"architecture", "governance"},
+                   true});
+  atoms.push_back({ccmcp::core::new_atom_id(),
+                   "cpp",
+                   "Modern C++",
+                   "Built C++20 systems",
+                   {"cpp20", "systems"},
+                   false});
 
   ccmcp::matching::Matcher matcher;
   const auto report = matcher.evaluate(opportunity, atoms);

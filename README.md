@@ -171,6 +171,7 @@ This is governance infrastructure, not an automation toy.
 - CMake 3.21+
 - C++20 compatible compiler (Clang, GCC, or MSVC)
 - vcpkg installed at `~/vcpkg` or `$VCPKG_ROOT`
+- (Optional) clang-format and clang-tidy 14+ for code quality
 
 ### Build Instructions
 
@@ -195,6 +196,23 @@ Dependencies (resolved automatically via vcpkg.json):
 - nlohmann-json (JSON serialization)
 - fmt (formatting)
 - Catch2 (testing)
+
+### Code Quality
+
+Format code and run static analysis:
+
+```bash
+# Format all C++ files (modifies in-place)
+./scripts/format.sh
+
+# Check formatting without modifying
+./scripts/format.sh --check
+
+# Run clang-tidy static analysis
+./scripts/lint.sh
+```
+
+See [docs/LINTING.md](docs/LINTING.md) for detailed linting and formatting documentation.
 
 ## Deterministic Inference Enhanced
 
