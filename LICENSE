@@ -199,3 +199,9 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+Asset Exception
+
+The files `plainsight-lab-logo.svg` and `plainsight-lab-logo-dark.svg` are
+excluded from the Apache License and are © PlainSight Lab, all rights reserved.
+These assets may not be used without permission.

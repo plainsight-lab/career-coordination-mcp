@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./plainsight-lab-logo-dark.svg" />
+    <img src="./plainsight-lab-logo.svg" alt="PlainSight Lab" width="160" />
+  </picture>
+</p>
+
 # Career Coordination MCP
 
 Deterministic inference enhanced job search coordination.
@@ -246,11 +253,22 @@ All contributions must align with the constitutional posture of the project.
 
 ## License
 
-Apache License 2.0
-Copyright (c) 2026 PlainSight Labs
 
-See LICENSE and NOTICE for details.
+This project is licensed under the Apache License, Version 2.0.
 
+Copyright (c) 2026 PlainSight Lab
+
+See LICENSE and NOTICE for full terms.
+
+**Asset Exception**
+
+The following assets are not licensed under Apache 2.0 and remain copyrighted:
+	•	plainsight-lab-logo.svg
+	•	plainsight-lab-logo-dark.svg
+
+These files are provided for use within this repository only and may not be redistributed, modified, or used to imply affiliation without explicit permission.
+
+All other source code and documentation in this repository are licensed under Apache 2.0 unless otherwise stated.
 ---
 
 ## Final Note
