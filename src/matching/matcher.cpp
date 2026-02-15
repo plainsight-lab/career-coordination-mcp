@@ -13,7 +13,7 @@ namespace {
 // Extract intersection tokens (sorted) using std::set_intersection.
 // Both inputs must be sorted and deduplicated.
 std::vector<std::string> extract_intersection(const std::vector<std::string>& a,
-                                               const std::vector<std::string>& b) {
+                                              const std::vector<std::string>& b) {
   std::vector<std::string> result;
   std::set_intersection(a.begin(), a.end(), b.begin(), b.end(), std::back_inserter(result));
   return result;
@@ -29,8 +29,8 @@ std::vector<std::string> tokenize_field(const std::string& text) {
 
 // Combine multiple token sets into one sorted, deduplicated set.
 std::vector<std::string> combine_token_sets(const std::vector<std::string>& a,
-                                             const std::vector<std::string>& b,
-                                             const std::vector<std::string>& c) {
+                                            const std::vector<std::string>& b,
+                                            const std::vector<std::string>& c) {
   std::set<std::string> combined;
   combined.insert(a.begin(), a.end());
   combined.insert(b.begin(), b.end());
@@ -102,11 +102,13 @@ domain::MatchReport Matcher::evaluate(const domain::Opportunity& opportunity,
 
       // Compute overlap: |R ∩ A| / |R| (ES.1: use std::set_intersection)
       std::vector<std::string> intersection = extract_intersection(req_tokens, atom_tokens);
-      double score = static_cast<double>(intersection.size()) / static_cast<double>(req_tokens.size());
+      double score =
+          static_cast<double>(intersection.size()) / static_cast<double>(req_tokens.size());
 
       // Update best match (tie-break by lexicographically smaller atom_id)
-      if (score > best_score || (score == best_score && (!best_atom_id.has_value() ||
-                                                          atom.atom_id.value < best_atom_id->value))) {
+      if (score > best_score ||
+          (score == best_score &&
+           (!best_atom_id.has_value() || atom.atom_id.value < best_atom_id->value))) {
         best_score = score;
         best_atom_id = atom.atom_id;
         best_evidence = std::move(intersection);  // Reuse already-computed intersection
@@ -131,8 +133,7 @@ domain::MatchReport Matcher::evaluate(const domain::Opportunity& opportunity,
 
   // Calculate overall score (average of per-requirement scores)
   if (!opportunity.requirements.empty()) {
-    report.overall_score =
-        total_score / static_cast<double>(opportunity.requirements.size());
+    report.overall_score = total_score / static_cast<double>(opportunity.requirements.size());
   } else {
     report.overall_score = 0.0;
   }

@@ -1,9 +1,9 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ccmcp/constitution/match_report_view.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
 #include "ccmcp/domain/match_report.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 #include <memory>
 

@@ -24,8 +24,8 @@ class ConstitutionalRule {
 
   // Validate the artifact and return findings.
   // Rules access envelope.artifact (typed view), not envelope.content (serialized string).
-  [[nodiscard]] virtual std::vector<Finding> Validate(
-      const ArtifactEnvelope& envelope, const ValidationContext& context) const = 0;
+  [[nodiscard]] virtual std::vector<Finding> Validate(const ArtifactEnvelope& envelope,
+                                                      const ValidationContext& context) const = 0;
 
  protected:
   ConstitutionalRule() = default;

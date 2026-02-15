@@ -6,7 +6,7 @@
 namespace ccmcp::constitution {
 
 std::vector<Finding> Schema001::Validate(const ArtifactEnvelope& envelope,
-                                          const ValidationContext& /*context*/) const {
+                                         const ValidationContext& /*context*/) const {
   std::vector<Finding> findings;
 
   // Check if artifact exists
@@ -18,17 +18,20 @@ std::vector<Finding> Schema001::Validate(const ArtifactEnvelope& envelope,
 
   // Check artifact type
   if (envelope.artifact_type() != ArtifactType::kMatchReport) {
-    findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                "Invalid artifact type (expected MatchReport)", {}});
+    findings.push_back(Finding{std::string(rule_id()),
+                               FindingSeverity::kBlock,
+                               "Invalid artifact type (expected MatchReport)",
+                               {}});
     return findings;
   }
 
   // Downcast to MatchReportView
   const auto* report_view = dynamic_cast<const MatchReportView*>(envelope.artifact.get());
   if (!report_view) {
-    findings.push_back(
-        Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                "Failed to cast artifact to MatchReportView", {}});
+    findings.push_back(Finding{std::string(rule_id()),
+                               FindingSeverity::kBlock,
+                               "Failed to cast artifact to MatchReportView",
+                               {}});
     return findings;
   }
 
@@ -36,8 +39,8 @@ std::vector<Finding> Schema001::Validate(const ArtifactEnvelope& envelope,
 
   // Check overall_score >= 0
   if (report.overall_score < 0.0) {
-    findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                "overall_score is negative", {}});
+    findings.push_back(
+        Finding{std::string(rule_id()), FindingSeverity::kBlock, "overall_score is negative", {}});
   }
 
   // Validate each RequirementMatch
@@ -46,34 +49,38 @@ std::vector<Finding> Schema001::Validate(const ArtifactEnvelope& envelope,
 
     // Check requirement_text not empty
     if (rm.requirement_text.empty()) {
-      findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                  "RequirementMatch[" + std::to_string(i) +
-                                      "] has empty requirement_text",
-                                  {}});
+      findings.push_back(
+          Finding{std::string(rule_id()),
+                  FindingSeverity::kBlock,
+                  "RequirementMatch[" + std::to_string(i) + "] has empty requirement_text",
+                  {}});
     }
 
     // Check best_score >= 0
     if (rm.best_score < 0.0) {
-      findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                  "RequirementMatch[" + std::to_string(i) +
-                                      "] has negative best_score",
-                                  {}});
+      findings.push_back(
+          Finding{std::string(rule_id()),
+                  FindingSeverity::kBlock,
+                  "RequirementMatch[" + std::to_string(i) + "] has negative best_score",
+                  {}});
     }
 
     // Check matched flag consistency
-    bool has_contributing_atom = rm.contributing_atom_id.has_value() &&
-                                  !rm.contributing_atom_id->value.empty();
+    bool has_contributing_atom =
+        rm.contributing_atom_id.has_value() && !rm.contributing_atom_id->value.empty();
 
     if (rm.matched && !has_contributing_atom) {
-      findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                  "RequirementMatch[" + std::to_string(i) +
-                                      "] is matched=true but missing contributing_atom_id",
-                                  {}});
+      findings.push_back(Finding{std::string(rule_id()),
+                                 FindingSeverity::kBlock,
+                                 "RequirementMatch[" + std::to_string(i) +
+                                     "] is matched=true but missing contributing_atom_id",
+                                 {}});
     } else if (!rm.matched && has_contributing_atom) {
-      findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kBlock,
-                                  "RequirementMatch[" + std::to_string(i) +
-                                      "] is matched=false but has contributing_atom_id",
-                                  {}});
+      findings.push_back(Finding{std::string(rule_id()),
+                                 FindingSeverity::kBlock,
+                                 "RequirementMatch[" + std::to_string(i) +
+                                     "] is matched=false but has contributing_atom_id",
+                                 {}});
     }
   }
 

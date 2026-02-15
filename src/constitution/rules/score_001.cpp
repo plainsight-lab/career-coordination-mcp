@@ -6,7 +6,7 @@
 namespace ccmcp::constitution {
 
 std::vector<Finding> Score001::Validate(const ArtifactEnvelope& envelope,
-                                         const ValidationContext& /*context*/) const {
+                                        const ValidationContext& /*context*/) const {
   std::vector<Finding> findings;
 
   // Skip if no artifact or wrong type (SCHEMA-001 will catch this)
@@ -23,8 +23,8 @@ std::vector<Finding> Score001::Validate(const ArtifactEnvelope& envelope,
 
   // Warn if overall_score == 0.0 AND requirements exist
   if (report.overall_score == 0.0 && !report.requirement_matches.empty()) {
-    findings.push_back(Finding{std::string(rule_id()), FindingSeverity::kWarn,
-                                "All requirement scores are zero.", {}});
+    findings.push_back(Finding{
+        std::string(rule_id()), FindingSeverity::kWarn, "All requirement scores are zero.", {}});
   }
 
   return findings;

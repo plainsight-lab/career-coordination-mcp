@@ -1,10 +1,10 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
 #include "ccmcp/matching/matcher.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 using namespace ccmcp;
 

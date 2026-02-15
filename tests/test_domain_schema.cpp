@@ -1,9 +1,9 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ccmcp/core/normalization.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 using namespace ccmcp;
 
@@ -116,7 +116,8 @@ TEST_CASE("normalize_tags produces sorted, deduplicated lowercase tags", "[norma
     // Join for golden comparison
     std::string joined;
     for (const auto& tag : result) {
-      if (!joined.empty()) joined += ",";
+      if (!joined.empty())
+        joined += ",";
       joined += tag;
     }
     REQUIRE(joined == "aws,azure,docker,kubernetes");
@@ -471,7 +472,8 @@ TEST_CASE("Schema normalization produces stable output", "[golden]") {
     // Join tags for golden comparison
     std::string joined;
     for (const auto& tag : normalized.tags) {
-      if (!joined.empty()) joined += ",";
+      if (!joined.empty())
+        joined += ",";
       joined += tag;
     }
 

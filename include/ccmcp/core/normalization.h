@@ -46,7 +46,7 @@ inline std::string normalize_ascii_lower(const std::string_view input) {
 // - Drops tokens shorter than min_length
 // - Returns tokens in encounter order (caller sorts if needed)
 inline std::vector<std::string> tokenize_ascii(const std::string_view input,
-                                                const std::size_t min_length = 2) {
+                                               const std::size_t min_length = 2) {
   // First pass: normalize to lowercase and replace non-alnum with space
   std::string normalized;
   normalized.reserve(input.size());
@@ -123,9 +123,8 @@ inline std::string trim(const std::string_view input) {
 
   // Find first non-whitespace
   std::size_t start = 0;
-  while (start < input.size() &&
-         (input[start] == ' ' || input[start] == '\t' || input[start] == '\n' ||
-          input[start] == '\r')) {
+  while (start < input.size() && (input[start] == ' ' || input[start] == '\t' ||
+                                  input[start] == '\n' || input[start] == '\r')) {
     ++start;
   }
 
@@ -136,9 +135,8 @@ inline std::string trim(const std::string_view input) {
 
   // Find last non-whitespace
   std::size_t end = input.size();
-  while (end > start &&
-         (input[end - 1] == ' ' || input[end - 1] == '\t' || input[end - 1] == '\n' ||
-          input[end - 1] == '\r')) {
+  while (end > start && (input[end - 1] == ' ' || input[end - 1] == '\t' ||
+                         input[end - 1] == '\n' || input[end - 1] == '\r')) {
     --end;
   }
 

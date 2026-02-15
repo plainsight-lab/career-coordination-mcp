@@ -22,14 +22,12 @@ int main() {
   auto trace_id = ccmcp::core::new_trace_id();
 
   // Emit RunStarted event
-  audit_log.append({
-      ccmcp::core::make_id("evt"),
-      trace_id.value,
-      "RunStarted",
-      R"({"cli_version":"v0.1","deterministic":true})",
-      "2026-01-01T00:00:00Z",  // Fixed timestamp for determinism
-      {}
-  });
+  audit_log.append({ccmcp::core::make_id("evt"),
+                    trace_id.value,
+                    "RunStarted",
+                    R"({"cli_version":"v0.1","deterministic":true})",
+                    "2026-01-01T00:00:00Z",  // Fixed timestamp for determinism
+                    {}});
 
   ccmcp::domain::Opportunity opportunity{};
   opportunity.opportunity_id = ccmcp::core::new_opportunity_id();
@@ -61,15 +59,13 @@ int main() {
   const auto report = matcher.evaluate(opportunity, atoms);
 
   // Emit MatchCompleted event
-  audit_log.append({
-      ccmcp::core::make_id("evt"),
-      trace_id.value,
-      "MatchCompleted",
-      R"({"opportunity_id":")" + report.opportunity_id.value + R"(","overall_score":)" +
-          std::to_string(report.overall_score) + "}",
-      "2026-01-01T00:00:01Z",
-      {report.opportunity_id.value}
-  });
+  audit_log.append({ccmcp::core::make_id("evt"),
+                    trace_id.value,
+                    "MatchCompleted",
+                    R"({"opportunity_id":")" + report.opportunity_id.value +
+                        R"(","overall_score":)" + std::to_string(report.overall_score) + "}",
+                    "2026-01-01T00:00:01Z",
+                    {report.opportunity_id.value}});
 
   nlohmann::json out;
   out["opportunity_id"] = report.opportunity_id.value;
@@ -89,14 +85,12 @@ int main() {
   std::cout << out.dump(2) << "\n";
 
   // Emit RunCompleted event
-  audit_log.append({
-      ccmcp::core::make_id("evt"),
-      trace_id.value,
-      "RunCompleted",
-      R"({"status":"success"})",
-      "2026-01-01T00:00:02Z",
-      {}
-  });
+  audit_log.append({ccmcp::core::make_id("evt"),
+                    trace_id.value,
+                    "RunCompleted",
+                    R"({"status":"success"})",
+                    "2026-01-01T00:00:02Z",
+                    {}});
 
   // Print audit trail for verification
   std::cout << "\n--- Audit Trail (trace_id=" << trace_id.value << ") ---\n";

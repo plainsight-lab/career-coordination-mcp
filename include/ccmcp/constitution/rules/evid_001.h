@@ -19,7 +19,7 @@ class Evid001 final : public ConstitutionalRule {
   }
 
   [[nodiscard]] std::vector<Finding> Validate(const ArtifactEnvelope& envelope,
-                                               const ValidationContext& context) const override;
+                                              const ValidationContext& context) const override;
 };
 
 }  // namespace ccmcp::constitution

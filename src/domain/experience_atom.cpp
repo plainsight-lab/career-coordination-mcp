@@ -25,7 +25,8 @@ core::Result<bool, std::string> ExperienceAtom::validate() const {
   // We verify by checking if re-normalizing produces same result
   auto normalized_tags = core::normalize_tags(tags);
   if (tags != normalized_tags) {
-    return core::Result<bool, std::string>::err("tags must be normalized (lowercase, sorted, deduplicated)");
+    return core::Result<bool, std::string>::err(
+        "tags must be normalized (lowercase, sorted, deduplicated)");
   }
 
   // Domain must be normalized (lowercase)

@@ -14,7 +14,8 @@ core::Result<bool, std::string> Requirement::validate() const {
   if (!tags.empty()) {
     auto normalized_tags = core::normalize_tags(tags);
     if (tags != normalized_tags) {
-      return core::Result<bool, std::string>::err("tags must be normalized (lowercase, sorted, deduplicated)");
+      return core::Result<bool, std::string>::err(
+          "tags must be normalized (lowercase, sorted, deduplicated)");
     }
   }
 
