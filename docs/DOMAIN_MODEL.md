@@ -24,6 +24,70 @@ All text normalization in this system is deterministic and locale-independent to
 
 ---
 
+## Deterministic Lexical Matching (v0.1)
+
+The matcher engine computes requirement-to-atom matches using deterministic lexical overlap scoring.
+
+**Matching Algorithm (LOCKED for v0.1):**
+
+1. **Tokenization:**
+   - For each `Requirement`, tokenize `requirement.text` using `tokenize_ascii()`
+   - For each verified `ExperienceAtom`, tokenize:
+     - `atom.claim`
+     - `atom.title`
+     - `atom.tags` (already normalized)
+   - Combine atom tokens into a single deduplicated, sorted set
+
+2. **Overlap Scoring:**
+   - Let `R` = set of requirement tokens (sorted, deduplicated)
+   - Let `A` = set of atom tokens (sorted, deduplicated)
+   - Compute overlap score per atom:
+     ```
+     score_atom = |R ∩ A| / |R|
+     ```
+   - Where:
+     - `|R ∩ A|` is the size of the intersection
+     - `|R|` is the number of requirement tokens
+     - If `R` is empty → `score_atom = 0.0`
+     - Result is `double` floating-point
+
+3. **Best Match Selection:**
+   - For each requirement, select the atom with highest `score_atom`
+   - **Tie-breaking rule:** If multiple atoms have identical scores, select the atom with lexicographically smallest `atom_id.value`
+   - If `score_atom > 0.0`:
+     - Mark requirement as **matched**
+     - Record `contributing_atom_id`
+     - Record `evidence_tokens` (intersection `R ∩ A`, sorted)
+   - Otherwise:
+     - Mark requirement as **unmatched**
+     - Add to `missing_requirements`
+
+4. **Global Score Calculation:**
+   - Overall score = average of all per-requirement best scores
+   - If zero requirements → `overall_score = 0.0`
+
+**Deterministic Guarantees:**
+
+- All token sets are deduplicated and sorted before scoring
+- Requirement iteration preserves original input order
+- Atom iteration is stable (preserves input order)
+- Tie-breaking is deterministic (lexicographic `atom_id` comparison)
+- Floating-point arithmetic is deterministic (no epsilon comparisons, no random tie-breaking)
+- Only verified atoms (`atom.verify() == true`) are considered
+
+**Evidence Attribution:**
+
+Each matched requirement includes:
+- `contributing_atom_id`: The atom that provided the best match
+- `evidence_tokens`: Sorted list of overlapping tokens (intersection)
+- `best_score`: The overlap ratio `[0.0, 1.0]`
+
+**Implementation:** See `src/matching/matcher.cpp`
+
+**Validation:** See `tests/test_matcher_*.cpp`
+
+---
+
 ## Entities
 
 ### ExperienceAtom
