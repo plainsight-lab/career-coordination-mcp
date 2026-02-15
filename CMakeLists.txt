@@ -27,6 +27,9 @@ add_library(ccmcp
   src/domain/resume.cpp
   src/domain/match_report.cpp
   src/constitution/validation_engine.cpp
+  src/constitution/rules/schema_001.cpp
+  src/constitution/rules/evid_001.cpp
+  src/constitution/rules/score_001.cpp
   src/storage/audit_log.cpp
   src/matching/matcher.cpp
 )

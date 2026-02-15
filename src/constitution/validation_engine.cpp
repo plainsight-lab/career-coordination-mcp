@@ -1,7 +1,13 @@
 #include "ccmcp/constitution/validation_engine.h"
 
 #include "ccmcp/constitution/finding.h"
+#include "ccmcp/constitution/rule.h"
+#include "ccmcp/constitution/rules/evid_001.h"
+#include "ccmcp/constitution/rules/schema_001.h"
+#include "ccmcp/constitution/rules/score_001.h"
 
+#include <algorithm>
+#include <memory>
 #include <utility>
 
 namespace ccmcp::constitution {
@@ -19,11 +25,15 @@ ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
   report.constitution_version = context.constitution_version;
   report.status = ValidationStatus::kAccepted;
 
+  // Evaluate each rule in order (deterministic iteration)
   for (const auto& rule : constitution_.rules) {
-    if (!rule.evaluate) {
-      continue;
+    if (!rule) {
+      continue;  // Skip null rules
     }
-    auto findings = rule.evaluate(envelope, context);
+
+    auto findings = rule->Validate(envelope, context);
+
+    // Aggregate findings and update status
     for (const auto& finding : findings) {
       if (finding.severity == FindingSeverity::kBlock) {
         report.status = ValidationStatus::kBlocked;
@@ -38,23 +48,29 @@ ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
     }
   }
 
+  // Sort findings deterministically: severity (BLOCK > FAIL > WARN > PASS), then rule_id
+  std::sort(report.findings.begin(), report.findings.end(), [](const Finding& a, const Finding& b) {
+    // Sort by severity descending (higher severity first)
+    if (a.severity != b.severity) {
+      return a.severity > b.severity;  // kBlock=3, kFail=2, kWarn=1, kPass=0
+    }
+    // Then by rule_id lexicographically
+    return a.rule_id < b.rule_id;
+  });
+
   return report;
 }
 
 Constitution make_default_constitution() {
-  Rule no_ungrounded_claims{};
-  no_ungrounded_claims.rule_id = "GND-001";
-  no_ungrounded_claims.version = "0.1.0";
-  no_ungrounded_claims.description = "No ungrounded claims";
-  no_ungrounded_claims.evaluate = [](const ArtifactEnvelope&, const ValidationContext&) {
-    // Stub rule currently always passes while preserving deterministic evaluation shape.
-    return std::vector<Finding>{Finding{"GND-001", FindingSeverity::kPass, "Stub pass", {}}};
-  };
-
   Constitution constitution{};
   constitution.constitution_id = "default";
   constitution.version = "0.1.0";
-  constitution.rules = {no_ungrounded_claims};
+
+  // Rules in fixed evaluation order (deterministic)
+  constitution.rules.push_back(std::make_unique<Schema001>());
+  constitution.rules.push_back(std::make_unique<Evid001>());
+  constitution.rules.push_back(std::make_unique<Score001>());
+
   return constitution;
 }
 

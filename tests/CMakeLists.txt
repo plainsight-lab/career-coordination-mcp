@@ -7,6 +7,10 @@ add_executable(ccmcp_tests
   test_matcher_determinism.cpp
   test_matcher_tie_break.cpp
   test_matcher_missing.cpp
+  test_validation_schema_block.cpp
+  test_validation_evidence_fail.cpp
+  test_validation_warn.cpp
+  test_validation_pass.cpp
 )
 
 target_link_libraries(ccmcp_tests
