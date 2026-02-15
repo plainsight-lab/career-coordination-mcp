@@ -40,8 +40,22 @@ struct TraceId {
   auto operator<=>(const TraceId&) const = default;
 };
 
+// Deterministic mode for testing/demos (set before any ID generation)
+inline bool& deterministic_ids() {
+  static bool deterministic = false;
+  return deterministic;
+}
+
 inline std::string make_id(const char* prefix) {
   static std::atomic<unsigned long long> counter{0};
+
+  if (deterministic_ids()) {
+    // Deterministic mode: use only sequential counter (for demos/tests)
+    const auto c = counter.fetch_add(1, std::memory_order_relaxed);
+    return std::string(prefix) + "-" + std::to_string(c);
+  }
+
+  // Production mode: timestamp + counter for uniqueness
   const auto now = std::chrono::system_clock::now().time_since_epoch();
   const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
   const auto c = counter.fetch_add(1, std::memory_order_relaxed);
