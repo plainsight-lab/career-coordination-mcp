@@ -9,8 +9,40 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace ccmcp::constitution {
+
+namespace {
+
+// Compute validation status from collected findings based on maximum severity.
+// Status precedence: BLOCK > FAIL > WARN > PASS
+ValidationStatus compute_status_from_findings(const std::vector<Finding>& findings) {
+  if (findings.empty()) {
+    return ValidationStatus::kAccepted;
+  }
+
+  // Find the most severe finding using std::max_element
+  auto max_finding =
+      std::max_element(findings.begin(), findings.end(),
+                       [](const Finding& a, const Finding& b) { return a.severity < b.severity; });
+
+  // Map maximum severity to validation status
+  switch (max_finding->severity) {
+    case FindingSeverity::kBlock:
+      return ValidationStatus::kBlocked;
+    case FindingSeverity::kFail:
+      return ValidationStatus::kRejected;
+    case FindingSeverity::kWarn:
+      return ValidationStatus::kNeedsReview;
+    case FindingSeverity::kPass:
+      return ValidationStatus::kAccepted;
+  }
+
+  return ValidationStatus::kAccepted;  // Default case (should not reach here)
+}
+
+}  // namespace
 
 ValidationEngine::ValidationEngine(Constitution constitution)
     : constitution_(std::move(constitution)) {}
@@ -23,30 +55,19 @@ ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
   report.artifact_id = envelope.artifact_id;
   report.constitution_id = context.constitution_id;
   report.constitution_version = context.constitution_version;
-  report.status = ValidationStatus::kAccepted;
 
-  // Evaluate each rule in order (deterministic iteration)
+  // Collect all findings from all rules (deterministic iteration order)
   for (const auto& rule : constitution_.rules) {
     if (!rule) {
       continue;  // Skip null rules
     }
 
     auto findings = rule->Validate(envelope, context);
-
-    // Aggregate findings and update status
-    for (const auto& finding : findings) {
-      if (finding.severity == FindingSeverity::kBlock) {
-        report.status = ValidationStatus::kBlocked;
-      } else if (finding.severity == FindingSeverity::kFail &&
-                 report.status != ValidationStatus::kBlocked) {
-        report.status = ValidationStatus::kRejected;
-      } else if (finding.severity == FindingSeverity::kWarn &&
-                 report.status == ValidationStatus::kAccepted) {
-        report.status = ValidationStatus::kNeedsReview;
-      }
-      report.findings.push_back(finding);
-    }
+    report.findings.insert(report.findings.end(), findings.begin(), findings.end());
   }
+
+  // Compute status from collected findings
+  report.status = compute_status_from_findings(report.findings);
 
   // Sort findings deterministically: severity (BLOCK > FAIL > WARN > PASS), then rule_id
   std::sort(report.findings.begin(), report.findings.end(), [](const Finding& a, const Finding& b) {
