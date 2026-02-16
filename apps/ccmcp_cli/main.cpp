@@ -5,6 +5,7 @@
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
+#include "ccmcp/embedding/embedding_provider.h"
 #include "ccmcp/matching/matcher.h"
 #include "ccmcp/storage/audit_event.h"
 #include "ccmcp/storage/audit_log.h"
@@ -26,27 +27,64 @@
 #include <string>
 #include <vector>
 
+struct CliConfig {
+  std::optional<std::string> db_path;
+  ccmcp::matching::MatchingStrategy matching_strategy{
+      ccmcp::matching::MatchingStrategy::kDeterministicLexicalV01};
+  std::string vector_backend{"inmemory"};  // "inmemory" or "lancedb"
+};
+
 // Forward declaration
 void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
-                   ccmcp::core::FixedClock& clock);
+                   ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy);
 
-// Parse command line arguments for --db flag
-std::optional<std::string> parse_db_path(int argc, char* argv[]) {
+// Parse command line arguments
+CliConfig parse_cli_args(int argc, char* argv[]) {
+  CliConfig config;
+
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
+
     if (arg == "--db" && i + 1 < argc) {
-      return argv[i + 1];
+      config.db_path = argv[++i];
+    } else if (arg == "--matching-strategy" && i + 1 < argc) {
+      std::string strategy = argv[++i];
+      if (strategy == "hybrid") {
+        config.matching_strategy = ccmcp::matching::MatchingStrategy::kHybridLexicalEmbeddingV02;
+      } else if (strategy == "lexical") {
+        config.matching_strategy = ccmcp::matching::MatchingStrategy::kDeterministicLexicalV01;
+      } else {
+        std::cerr << "Invalid --matching-strategy: " << strategy << " (valid: lexical, hybrid)\n";
+      }
+    } else if (arg == "--vector-backend" && i + 1 < argc) {
+      std::string backend = argv[++i];
+      if (backend == "inmemory" || backend == "lancedb") {
+        config.vector_backend = backend;
+      } else {
+        std::cerr << "Invalid --vector-backend: " << backend << " (valid: inmemory, lancedb)\n";
+      }
     }
   }
-  return std::nullopt;
+
+  return config;
 }
 
 int main(int argc, char* argv[]) {
-  auto db_path = parse_db_path(argc, argv);
+  auto config = parse_cli_args(argc, argv);
 
   std::cout << "career-coordination-mcp v0.1\n";
-  if (db_path.has_value()) {
-    std::cout << "Using SQLite database: " << db_path.value() << "\n";
+  if (config.db_path.has_value()) {
+    std::cout << "Using SQLite database: " << config.db_path.value() << "\n";
+  }
+  if (config.matching_strategy == ccmcp::matching::MatchingStrategy::kHybridLexicalEmbeddingV02) {
+    std::cout << "Matching strategy: hybrid (lexical + embedding)\n";
+    std::cout << "Vector backend: " << config.vector_backend << "\n";
+  }
+
+  // Check for incompatible configuration
+  if (config.vector_backend == "lancedb") {
+    std::cerr << "Error: LanceDB backend not yet implemented in v0.2\n";
+    return 1;
   }
 
   // Inject deterministic generators for reproducible demo output
@@ -54,9 +92,9 @@ int main(int argc, char* argv[]) {
   ccmcp::core::FixedClock clock("2026-01-01T00:00:00Z");
 
   // Initialize repositories based on --db flag
-  if (db_path.has_value()) {
+  if (config.db_path.has_value()) {
     // SQLite persistence
-    auto db_result = ccmcp::storage::sqlite::SqliteDb::open(db_path.value());
+    auto db_result = ccmcp::storage::sqlite::SqliteDb::open(config.db_path.value());
     if (!db_result.has_value()) {
       std::cerr << "Failed to open database: " << db_result.error() << "\n";
       return 1;
@@ -75,12 +113,13 @@ int main(int argc, char* argv[]) {
     ccmcp::storage::sqlite::SqliteInteractionRepository interaction_repo(db);
     ccmcp::storage::sqlite::SqliteAuditLog audit_log(db);
     ccmcp::vector::NullEmbeddingIndex vector_index;
+    ccmcp::embedding::NullEmbeddingProvider embedding_provider;
 
-    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo, audit_log,
-                                   vector_index};
+    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,
+                                   audit_log, vector_index,     embedding_provider};
 
     // Run application logic with SQLite services
-    run_cli_logic(services, id_gen, clock);
+    run_cli_logic(services, id_gen, clock, config.matching_strategy);
   } else {
     // In-memory (default)
     ccmcp::storage::InMemoryAtomRepository atom_repo;
@@ -88,12 +127,13 @@ int main(int argc, char* argv[]) {
     ccmcp::storage::InMemoryInteractionRepository interaction_repo;
     ccmcp::storage::InMemoryAuditLog audit_log;
     ccmcp::vector::NullEmbeddingIndex vector_index;
+    ccmcp::embedding::NullEmbeddingProvider embedding_provider;
 
-    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo, audit_log,
-                                   vector_index};
+    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,
+                                   audit_log, vector_index,     embedding_provider};
 
     // Run application logic with in-memory services
-    run_cli_logic(services, id_gen, clock);
+    run_cli_logic(services, id_gen, clock, config.matching_strategy);
   }
 
   return 0;
@@ -101,7 +141,7 @@ int main(int argc, char* argv[]) {
 
 // Application logic extracted to function for reuse with different storage backends
 void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
-                   ccmcp::core::FixedClock& clock) {
+                   ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy) {
   auto trace_id = ccmcp::core::new_trace_id(id_gen);
 
   // Emit RunStarted event
@@ -141,9 +181,10 @@ void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicId
                          {}});
 
   // Perform matching using verified atoms
-  ccmcp::matching::Matcher matcher;
+  ccmcp::matching::Matcher matcher(ccmcp::matching::ScoreWeights{}, strategy);
   const auto verified_atoms = services.atoms.list_verified();
-  const auto report = matcher.evaluate(opportunity, verified_atoms);
+  const auto report = matcher.evaluate(opportunity, verified_atoms, &services.embedding_provider,
+                                       &services.vector_index);
 
   // Emit MatchCompleted event
   services.audit_log.append({id_gen.next("evt"),

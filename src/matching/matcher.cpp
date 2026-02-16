@@ -3,12 +3,25 @@
 #include "ccmcp/core/normalization.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
 #include <string>
 
 namespace ccmcp::matching {
 
 namespace {
+
+// Helper: Build query text from opportunity requirements
+std::string build_query_text(const domain::Opportunity& opportunity) {
+  std::string query;
+  for (const auto& req : opportunity.requirements) {
+    if (!query.empty()) {
+      query += " ";
+    }
+    query += req.text;
+  }
+  return query;
+}
 
 // Extract intersection tokens (sorted) using std::set_intersection.
 // Both inputs must be sorted and deduplicated.
@@ -40,30 +53,175 @@ std::vector<std::string> combine_token_sets(const std::vector<std::string>& a,
 
 }  // namespace
 
-Matcher::Matcher(const ScoreWeights weights) : weights_(weights) {}
+Matcher::Matcher(const ScoreWeights weights, const MatchingStrategy strategy,
+                 const HybridConfig hybrid_config)
+    : weights_(weights), strategy_(strategy), hybrid_config_(hybrid_config) {}
+
+std::vector<const domain::ExperienceAtom*> Matcher::select_candidates(
+    const domain::Opportunity& opportunity, const std::vector<domain::ExperienceAtom>& atoms,
+    const embedding::IEmbeddingProvider* embedding_provider,
+    const vector::IEmbeddingIndex* vector_index, domain::RetrievalStats& stats) const {
+  // v0.1 mode: All verified atoms are candidates
+  if (strategy_ == MatchingStrategy::kDeterministicLexicalV01) {
+    std::vector<const domain::ExperienceAtom*> candidates;
+    for (const auto& atom : atoms) {
+      if (atom.verify()) {
+        candidates.push_back(&atom);
+      }
+    }
+    stats.lexical_candidates = candidates.size();
+    stats.embedding_candidates = 0;
+    stats.merged_candidates = candidates.size();
+    return candidates;
+  }
+
+  // v0.2 hybrid mode: Lexical top-K + embedding top-K, merged
+  std::set<std::string> lexical_atom_ids;
+  std::set<std::string> embedding_atom_ids;
+
+  // Stage 1: Lexical candidate selection
+  // Pre-compute lexical overlap scores for all verified atoms
+  struct ScoredAtom {
+    const domain::ExperienceAtom* atom;
+    double score;
+  };
+
+  std::vector<ScoredAtom> lexical_scored;
+
+  // Tokenize all requirements into combined query
+  std::vector<std::string> all_req_tokens;
+  for (const auto& req : opportunity.requirements) {
+    auto req_tokens = tokenize_field(req.text);
+    all_req_tokens.insert(all_req_tokens.end(), req_tokens.begin(), req_tokens.end());
+  }
+
+  // Deduplicate and sort query tokens
+  std::set<std::string> unique_tokens(all_req_tokens.begin(), all_req_tokens.end());
+  std::vector<std::string> query_tokens(unique_tokens.begin(), unique_tokens.end());
+
+  if (query_tokens.empty()) {
+    // No query tokens - fallback to all verified atoms
+    std::vector<const domain::ExperienceAtom*> candidates;
+    for (const auto& atom : atoms) {
+      if (atom.verify()) {
+        candidates.push_back(&atom);
+      }
+    }
+    stats.lexical_candidates = candidates.size();
+    stats.embedding_candidates = 0;
+    stats.merged_candidates = candidates.size();
+    return candidates;
+  }
+
+  // Score all verified atoms by lexical overlap
+  for (const auto& atom : atoms) {
+    if (!atom.verify()) {
+      continue;
+    }
+
+    // Tokenize atom
+    std::vector<std::string> claim_tokens = tokenize_field(atom.claim);
+    std::vector<std::string> title_tokens = tokenize_field(atom.title);
+    std::vector<std::string> atom_tokens =
+        combine_token_sets(claim_tokens, title_tokens, atom.tags);
+
+    // Compute overlap score
+    std::vector<std::string> intersection = extract_intersection(query_tokens, atom_tokens);
+    double score =
+        static_cast<double>(intersection.size()) / static_cast<double>(query_tokens.size());
+
+    lexical_scored.push_back({&atom, score});
+  }
+
+  // Sort by score descending, then atom_id ascending (deterministic tie-break)
+  std::sort(lexical_scored.begin(), lexical_scored.end(),
+            [](const ScoredAtom& a, const ScoredAtom& b) {
+              if (a.score != b.score) {
+                return a.score > b.score;
+              }
+              return a.atom->atom_id.value < b.atom->atom_id.value;
+            });
+
+  // Select top K_lex
+  size_t k_lex = std::min(hybrid_config_.k_lexical, lexical_scored.size());
+  for (size_t i = 0; i < k_lex; ++i) {
+    lexical_atom_ids.insert(lexical_scored[i].atom->atom_id.value);
+  }
+
+  stats.lexical_candidates = lexical_atom_ids.size();
+
+  // Stage 2: Embedding candidate selection
+  if (embedding_provider != nullptr && vector_index != nullptr &&
+      embedding_provider->dimension() > 0) {
+    // Build query embedding
+    std::string query_text = build_query_text(opportunity);
+    vector::Vector query_embedding = embedding_provider->embed_text(query_text);
+
+    if (!query_embedding.empty()) {
+      // Query vector index for top K_emb
+      auto search_results = vector_index->query(query_embedding, hybrid_config_.k_embedding);
+
+      // Extract atom IDs from search results
+      for (const auto& result : search_results) {
+        embedding_atom_ids.insert(result.key);
+      }
+    }
+  }
+
+  stats.embedding_candidates = embedding_atom_ids.size();
+
+  // Stage 3: Merge candidates (union by atom_id)
+  std::set<std::string> merged_atom_ids;
+  merged_atom_ids.insert(lexical_atom_ids.begin(), lexical_atom_ids.end());
+  merged_atom_ids.insert(embedding_atom_ids.begin(), embedding_atom_ids.end());
+
+  stats.merged_candidates = merged_atom_ids.size();
+
+  // Build atom map for fast lookup
+  std::map<std::string, const domain::ExperienceAtom*> atom_map;
+  for (const auto& atom : atoms) {
+    atom_map[atom.atom_id.value] = &atom;
+  }
+
+  // Build final candidate list (sorted by atom_id for determinism)
+  std::vector<const domain::ExperienceAtom*> candidates;
+  for (const auto& atom_id : merged_atom_ids) {
+    auto it = atom_map.find(atom_id);
+    if (it != atom_map.end()) {
+      candidates.push_back(it->second);
+    }
+  }
+
+  return candidates;
+}
 
 domain::MatchReport Matcher::evaluate(const domain::Opportunity& opportunity,
-                                      const std::vector<domain::ExperienceAtom>& atoms) const {
+                                      const std::vector<domain::ExperienceAtom>& atoms,
+                                      const embedding::IEmbeddingProvider* embedding_provider,
+                                      const vector::IEmbeddingIndex* vector_index) const {
   domain::MatchReport report{};
   report.opportunity_id = opportunity.opportunity_id;
-  report.strategy = "deterministic_lexical_v0.1";
 
-  // Pre-compute atom token sets once (avoid O(R × A) redundant tokenization)
-  // This moves tokenization from O(R × A × T) to O(A × T) where T = tokenization cost
-  std::vector<std::vector<std::string>> atom_token_sets;
-  atom_token_sets.reserve(atoms.size());
+  // Set strategy string based on mode
+  if (strategy_ == MatchingStrategy::kDeterministicLexicalV01) {
+    report.strategy = "deterministic_lexical_v0.1";
+  } else {
+    report.strategy = "hybrid_lexical_embedding_v0.2";
+  }
 
-  for (const auto& atom : atoms) {
-    if (atom.verify()) {
-      std::vector<std::string> claim_tokens = tokenize_field(atom.claim);
-      std::vector<std::string> title_tokens = tokenize_field(atom.title);
-      std::vector<std::string> atom_tokens =
-          combine_token_sets(claim_tokens, title_tokens, atom.tags);
-      atom_token_sets.push_back(std::move(atom_tokens));
-    } else {
-      // Unverified atoms get empty token set (will be skipped during matching)
-      atom_token_sets.emplace_back();
-    }
+  // Select candidate atoms based on strategy
+  auto candidates = select_candidates(opportunity, atoms, embedding_provider, vector_index,
+                                      report.retrieval_stats);
+
+  // Pre-compute atom token sets for candidates only (avoid redundant tokenization)
+  std::map<std::string, std::vector<std::string>> candidate_token_sets;
+
+  for (const auto* atom_ptr : candidates) {
+    std::vector<std::string> claim_tokens = tokenize_field(atom_ptr->claim);
+    std::vector<std::string> title_tokens = tokenize_field(atom_ptr->title);
+    std::vector<std::string> atom_tokens =
+        combine_token_sets(claim_tokens, title_tokens, atom_ptr->tags);
+    candidate_token_sets[atom_ptr->atom_id.value] = std::move(atom_tokens);
   }
 
   // Process each requirement in order (preserving input order)
@@ -86,19 +244,14 @@ domain::MatchReport Matcher::evaluate(const domain::Opportunity& opportunity,
       continue;
     }
 
-    // Find best matching atom using pre-computed token sets
+    // Find best matching atom from candidates using pre-computed token sets
     double best_score = 0.0;
     std::optional<core::AtomId> best_atom_id;
     std::vector<std::string> best_evidence;
 
-    for (std::size_t i = 0; i < atoms.size(); ++i) {
-      const auto& atom = atoms[i];
-      const auto& atom_tokens = atom_token_sets[i];
-
-      // Skip unverified atoms (empty token set)
-      if (atom_tokens.empty()) {
-        continue;
-      }
+    for (const auto* atom_ptr : candidates) {
+      const auto& atom = *atom_ptr;
+      const auto& atom_tokens = candidate_token_sets[atom.atom_id.value];
 
       // Compute overlap: |R ∩ A| / |R| (ES.1: use std::set_intersection)
       std::vector<std::string> intersection = extract_intersection(req_tokens, atom_tokens);

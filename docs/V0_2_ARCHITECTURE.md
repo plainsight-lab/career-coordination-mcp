@@ -823,7 +823,277 @@ target_link_libraries(ccmcp PUBLIC unofficial::sqlite3::sqlite3)
 | Vector Index       | NullEmbeddingIndex | Placeholder for LanceDB        | ✅     |
 | In-Memory          | Available        | Testing, development             | ✅     |
 
+---
+
+## v0.2 Slice 3: Hybrid Lexical + Embedding Retrieval
+
+### Overview
+
+Hybrid retrieval expands candidate atom selection by combining:
+1. **Lexical retrieval** (token overlap)
+2. **Embedding retrieval** (semantic similarity via IVectorIndex)
+
+**Key principle**: Embeddings are for **retrieval only**, not scoring. Final scoring remains deterministic lexical overlap.
+
+**Status:** ✅ Implemented in v0.2 Slice 3
+
+### Architecture Decision
+
+**Retrieval ≠ Scoring**
+
+- Embeddings expand recall (find more candidate atoms)
+- Lexical scoring remains the source of truth
+- Determinism preserved via:
+  - Stable embedding generation (DeterministicStubEmbeddingProvider)
+  - Deterministic vector search (InMemoryVectorIndex sorts by score, then key)
+  - Deterministic merge (std::set preserves lexicographic order)
+
+### Hybrid Retrieval Algorithm
+
+#### Input
+- Opportunity requirements (R₁, R₂, ..., Rₙ)
+- All verified ExperienceAtoms
+
+#### Stage 1: Lexical Candidate Selection
+
+1. Combine all requirement texts into query tokens (deduplicated, sorted)
+2. For each verified atom:
+   - Tokenize claim + title + tags
+   - Compute overlap score: |R ∩ A| / |R|
+3. Sort by score descending, then atom_id ascending (tie-break)
+4. Select top K_lex candidates (default K_lex = 25)
+
+#### Stage 2: Embedding Candidate Selection
+
+1. Build query embedding from concatenated requirement texts
+2. Query IVectorIndex for top K_emb results (default K_emb = 25)
+3. Extract atom IDs from search results
+
+#### Stage 3: Merge Candidates
+
+1. Union lexical and embedding atom IDs (std::set for deterministic ordering)
+2. Retrieve atom objects from repository
+3. Result: merged candidate set (sorted by atom_id)
+
+#### Stage 4: Final Scoring
+
+1. For each requirement, score **only** the merged candidates (not all atoms)
+2. Scoring formula unchanged: |R ∩ A| / |R|
+3. Tie-breaking unchanged: lexicographically smaller atom_id wins
+
+#### Provenance Tracking
+
+MatchReport includes RetrievalStats:
+```cpp
+struct RetrievalStats {
+  size_t lexical_candidates;    // Top-K from lexical scoring
+  size_t embedding_candidates;  // Top-K from vector search
+  size_t merged_candidates;     // Union of both sets
+};
+```
+
+### IEmbeddingProvider Interface
+
+#### Purpose
+Abstraction boundary for embedding generation. Enables:
+- Deterministic testing (DeterministicStubEmbeddingProvider)
+- Future integration with real models (OpenAI, sentence-transformers, etc.)
+- Disabling embeddings (NullEmbeddingProvider)
+
+#### Interface
+```cpp
+class IEmbeddingProvider {
+ public:
+  virtual ~IEmbeddingProvider() = default;
+  virtual vector::Vector embed_text(std::string_view text) const = 0;
+  virtual size_t dimension() const = 0;
+};
+```
+
+#### Implementations
+
+**NullEmbeddingProvider**
+- Returns empty vectors (dimension = 0)
+- Disables embedding retrieval (falls back to pure lexical)
+
+**DeterministicStubEmbeddingProvider**
+- Generates stable vectors from text statistics
+- Strategy: Hash tokens to vector indices, accumulate counts, normalize to unit vector
+- Guarantees: Same text → same vector (deterministic)
+- Dimension: 128 (configurable)
+
+### Matching Strategy Enum
+
+```cpp
+enum class MatchingStrategy {
+  kDeterministicLexicalV01,       // v0.1 default: all atoms scored
+  kHybridLexicalEmbeddingV02,     // v0.2: top-K lexical + top-K embedding
+};
+```
+
+### CLI Usage
+
+#### Default Mode (v0.1 Lexical)
+
+```bash
+./ccmcp_cli
+# Uses all verified atoms for scoring (no embedding retrieval)
+```
+
+Output:
+```json
+{
+  "strategy": "deterministic_lexical_v0.1",
+  "retrieval_stats": {
+    "lexical_candidates": 2,    // All verified atoms
+    "embedding_candidates": 0,
+    "merged_candidates": 2
+  }
+}
+```
+
+#### Hybrid Mode
+
+```bash
+./ccmcp_cli --matching-strategy hybrid
+# Uses lexical top-K + embedding top-K
+```
+
+Output:
+```json
+{
+  "strategy": "hybrid_lexical_embedding_v0.2",
+  "retrieval_stats": {
+    "lexical_candidates": 25,
+    "embedding_candidates": 25,
+    "merged_candidates": 30     // Union may overlap
+  }
+}
+```
+
+#### Vector Backend Selection
+
+```bash
+./ccmcp_cli --matching-strategy hybrid --vector-backend inmemory
+# Uses InMemoryVectorIndex (default)
+
+./ccmcp_cli --matching-strategy hybrid --vector-backend lancedb
+# Error: LanceDB not yet implemented in v0.2
+```
+
+### Hybrid Configuration
+
+```cpp
+struct HybridConfig {
+  size_t k_lexical{25};    // Top K from lexical pre-scoring
+  size_t k_embedding{25};  // Top K from vector search
+};
+```
+
+**Future:** CLI flags for K values (not implemented in v0.2)
+
+### Determinism Guarantees
+
+#### Functional Determinism
+- Same inputs → same outputs (byte-stable)
+- DeterministicStubEmbeddingProvider: same text → same vector
+- InMemoryVectorIndex: cosine similarity with deterministic tie-breaks (epsilon + key)
+- Merge: std::set preserves lexicographic atom ID order
+
+#### Environmental Determinism
+- No OS/locale dependencies
+- No floating-point non-determinism (uses epsilon comparisons)
+- No random number generation
+
+### Testing Strategy
+
+**Test Coverage:**
+- `test_matcher_hybrid_retrieval.cpp`: Recall expansion, fallback, tie-breaking
+- `test_matcher_hybrid_determinism.cpp`: Byte-stable output, stable embeddings
+
+**Key Tests:**
+1. **Hybrid expands recall**: Atom missed by lexical but found via embedding
+2. **Determinism**: Two runs produce identical output
+3. **Tie-breaking preserved**: atom-a < atom-z (lexicographic)
+4. **NullEmbeddingProvider fallback**: Hybrid mode with empty embeddings works
+
+### Performance Characteristics
+
+**v0.1 Lexical (Default):**
+- Candidates: All verified atoms
+- Complexity: O(R × A × T) where R = requirements, A = atoms, T = avg tokens
+
+**v0.2 Hybrid:**
+- Candidates: top-K_lex + top-K_emb (merged)
+- Complexity: O(R × A × T) + O(A × log A) for sorting + O(K_emb × dim) for embedding search
+- Trade-off: More work for candidate selection, but potentially better recall
+
+### Integration Points
+
+**Services Container:**
+```cpp
+struct Services {
+  // ... existing fields
+  embedding::IEmbeddingProvider& embedding_provider;
+};
+```
+
+**Matcher API:**
+```cpp
+Matcher::evaluate(
+  const Opportunity& opportunity,
+  const std::vector<ExperienceAtom>& atoms,
+  const IEmbeddingProvider* embedding_provider = nullptr,  // v0.2: pass for hybrid
+  const IVectorIndex* vector_index = nullptr               // v0.2: pass for hybrid
+);
+```
+
+### File Layout
+
+```
+include/ccmcp/embedding/
+└── embedding_provider.h         # IEmbeddingProvider interface + implementations
+
+src/embedding/
+└── deterministic_stub_embedding_provider.cpp
+
+tests/
+├── test_matcher_hybrid_retrieval.cpp
+└── test_matcher_hybrid_determinism.cpp
+```
+
+### Future Enhancements (Post-v0.2)
+
+**v0.3: Real Embedding Models**
+- OpenAI embeddings (text-embedding-3-small)
+- Local sentence-transformers
+- Caching strategy for repeated embeddings
+
+**v0.4: LanceDB Integration**
+- Production vector index
+- Persistent embeddings
+- Batch indexing pipeline
+
+**v0.5: Advanced Hybrid**
+- Configurable K values via CLI
+- Weighted fusion (lexical + semantic scores)
+- Multi-stage retrieval (coarse + fine)
+
+---
+
+## Summary: v0.2 Complete Architecture
+
+| Component          | Implementation   | Purpose                          | Status |
+|--------------------|------------------|----------------------------------|--------|
+| Atoms              | SQLite           | Canonical persistence            | ✅     |
+| Opportunities      | SQLite           | Canonical persistence            | ✅     |
+| Interactions       | SQLite           | Canonical persistence            | ✅     |
+| Audit Events       | SQLite           | Append-only log                  | ✅     |
+| Vector Index       | InMemoryVectorIndex | Testing/development           | ✅     |
+| Embedding Provider | DeterministicStubEmbeddingProvider | Testing       | ✅     |
+| Hybrid Retrieval   | Lexical + Embedding | Recall expansion             | ✅     |
+| In-Memory          | Available        | Testing, development             | ✅     |
+
 **Next Steps:**
-- v0.2 Slice 3: LanceDB vector search
 - v0.2 Slice 4: Redis state machine
 - v0.2 Slice 5: MCP server

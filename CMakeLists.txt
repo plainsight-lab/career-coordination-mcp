@@ -42,6 +42,7 @@ add_library(ccmcp
   src/storage/sqlite/sqlite_opportunity_repository.cpp
   src/storage/sqlite/sqlite_interaction_repository.cpp
   src/storage/sqlite/sqlite_audit_log.cpp
+  src/embedding/deterministic_stub_embedding_provider.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
   src/vector/lancedb_embedding_index.cpp
