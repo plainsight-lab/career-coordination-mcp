@@ -5,6 +5,7 @@
   "dependencies": [
     "nlohmann-json",
     "fmt",
-    "catch2"
+    "catch2",
+    "sqlite3"
   ]
 }

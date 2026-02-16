@@ -11,30 +11,97 @@
 #include "ccmcp/storage/inmemory_atom_repository.h"
 #include "ccmcp/storage/inmemory_interaction_repository.h"
 #include "ccmcp/storage/inmemory_opportunity_repository.h"
+#include "ccmcp/storage/sqlite/sqlite_atom_repository.h"
+#include "ccmcp/storage/sqlite/sqlite_audit_log.h"
+#include "ccmcp/storage/sqlite/sqlite_db.h"
+#include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
+#include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
 #include "ccmcp/vector/null_embedding_index.h"
 
 #include <nlohmann/json.hpp>
 
 #include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
-int main() {
+// Forward declaration
+void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
+                   ccmcp::core::FixedClock& clock);
+
+// Parse command line arguments for --db flag
+std::optional<std::string> parse_db_path(int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--db" && i + 1 < argc) {
+      return argv[i + 1];
+    }
+  }
+  return std::nullopt;
+}
+
+int main(int argc, char* argv[]) {
+  auto db_path = parse_db_path(argc, argv);
+
   std::cout << "career-coordination-mcp v0.1\n";
+  if (db_path.has_value()) {
+    std::cout << "Using SQLite database: " << db_path.value() << "\n";
+  }
 
   // Inject deterministic generators for reproducible demo output
   ccmcp::core::DeterministicIdGenerator id_gen;
   ccmcp::core::FixedClock clock("2026-01-01T00:00:00Z");
 
-  // Initialize repositories and services
-  ccmcp::storage::InMemoryAtomRepository atom_repo;
-  ccmcp::storage::InMemoryOpportunityRepository opportunity_repo;
-  ccmcp::storage::InMemoryInteractionRepository interaction_repo;
-  ccmcp::storage::InMemoryAuditLog audit_log;
-  ccmcp::vector::NullEmbeddingIndex vector_index;
+  // Initialize repositories based on --db flag
+  if (db_path.has_value()) {
+    // SQLite persistence
+    auto db_result = ccmcp::storage::sqlite::SqliteDb::open(db_path.value());
+    if (!db_result.has_value()) {
+      std::cerr << "Failed to open database: " << db_result.error() << "\n";
+      return 1;
+    }
 
-  ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo, audit_log,
-                                 vector_index};
+    auto db = db_result.value();
+    auto schema_result = db->ensure_schema_v1();
+    if (!schema_result.has_value()) {
+      std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
+      return 1;
+    }
 
+    // Create SQLite repositories
+    ccmcp::storage::sqlite::SqliteAtomRepository atom_repo(db);
+    ccmcp::storage::sqlite::SqliteOpportunityRepository opportunity_repo(db);
+    ccmcp::storage::sqlite::SqliteInteractionRepository interaction_repo(db);
+    ccmcp::storage::sqlite::SqliteAuditLog audit_log(db);
+    ccmcp::vector::NullEmbeddingIndex vector_index;
+
+    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo, audit_log,
+                                   vector_index};
+
+    // Run application logic with SQLite services
+    run_cli_logic(services, id_gen, clock);
+  } else {
+    // In-memory (default)
+    ccmcp::storage::InMemoryAtomRepository atom_repo;
+    ccmcp::storage::InMemoryOpportunityRepository opportunity_repo;
+    ccmcp::storage::InMemoryInteractionRepository interaction_repo;
+    ccmcp::storage::InMemoryAuditLog audit_log;
+    ccmcp::vector::NullEmbeddingIndex vector_index;
+
+    ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo, audit_log,
+                                   vector_index};
+
+    // Run application logic with in-memory services
+    run_cli_logic(services, id_gen, clock);
+  }
+
+  return 0;
+}
+
+// Application logic extracted to function for reuse with different storage backends
+void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
+                   ccmcp::core::FixedClock& clock) {
   auto trace_id = ccmcp::core::new_trace_id(id_gen);
 
   // Emit RunStarted event
@@ -118,6 +185,4 @@ int main() {
   for (const auto& event : services.audit_log.query(trace_id.value)) {
     std::cout << event.created_at << " [" << event.event_type << "] " << event.payload << "\n";
   }
-
-  return 0;
 }

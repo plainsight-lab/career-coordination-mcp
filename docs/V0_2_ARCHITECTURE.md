@@ -530,3 +530,300 @@ v0.2 Slice 1 establishes:
 2. v0.2 Slice 3: LanceDB vector search
 3. v0.2 Slice 4: Redis state machine
 4. v0.2 Slice 5: MCP server integration
+
+---
+
+## v0.2 Slice 2: SQLite Persistence (Canonical Storage)
+
+### Overview
+
+SQLite is the **canonical persistence layer** for career-coordination-mcp. All atoms, opportunities, interactions, and audit events are stored in SQLite for durability and production use.
+
+**Status:** ✅ Implemented in v0.2 Slice 2
+
+### Architecture Decision
+
+- **SQLite** = Canonical persistence (CRUD, relational data)
+- **LanceDB** = Vector search (embeddings, similarity) - *planned for Slice 3*
+- **Redis** = State machine persistence (interactions) - *planned for Slice 4*
+
+### Schema v1
+
+SQLite schema v1 provides tables for all canonical entities:
+
+#### Tables
+
+**atoms**
+- `atom_id` TEXT PRIMARY KEY
+- `domain` TEXT
+- `title` TEXT
+- `claim` TEXT
+- `tags_json` TEXT (JSON array, deterministic sort)
+- `verified` INTEGER (0/1)
+- `evidence_refs_json` TEXT (JSON array)
+
+**opportunities**
+- `opportunity_id` TEXT PRIMARY KEY
+- `company` TEXT
+- `role_title` TEXT
+- `source` TEXT
+
+**requirements** (one-to-many with opportunities)
+- `opportunity_id` TEXT (FK)
+- `idx` INTEGER (preserves order)
+- `text` TEXT
+- `tags_json` TEXT (JSON array)
+- `required` INTEGER (0/1)
+- PRIMARY KEY: (opportunity_id, idx)
+
+**interactions**
+- `interaction_id` TEXT PRIMARY KEY
+- `contact_id` TEXT
+- `opportunity_id` TEXT (FK)
+- `state` INTEGER
+
+**audit_events** (append-only)
+- `event_id` TEXT PRIMARY KEY
+- `trace_id` TEXT
+- `event_type` TEXT
+- `payload` TEXT (JSON)
+- `created_at` TEXT (ISO 8601)
+- `entity_ids_json` TEXT (JSON array)
+- `idx` INTEGER (monotonic per trace)
+
+#### Indexes
+
+- `idx_atoms_verified` on `atoms(verified)`
+- `idx_audit_events_trace` on `audit_events(trace_id, idx)`
+
+### Schema Versioning
+
+**Mechanism:** `schema_version` table tracks applied migrations.
+
+```sql
+CREATE TABLE schema_version (
+  version INTEGER PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
+```
+
+**Current version:** 1
+
+**Migration strategy:**
+- Check `schema_version` table for current version
+- Apply incremental migrations (v1 → v2 → v3, etc.)
+- Each migration is idempotent (CREATE IF NOT EXISTS)
+
+### SQLite Implementations
+
+All SQLite repositories implement the same interfaces as in-memory repositories:
+
+| Interface                  | SQLite Implementation          | Backend           |
+|----------------------------|--------------------------------|-------------------|
+| IAtomRepository            | SqliteAtomRepository           | atoms table       |
+| IOpportunityRepository     | SqliteOpportunityRepository    | opportunities + requirements |
+| IInteractionRepository     | SqliteInteractionRepository    | interactions      |
+| IAuditLog                  | SqliteAuditLog                 | audit_events      |
+
+### Determinism Guarantees
+
+All SQLite queries use `ORDER BY` to ensure deterministic results:
+
+```sql
+-- Atoms: ORDER BY atom_id
+SELECT * FROM atoms WHERE verified = 1 ORDER BY atom_id;
+
+-- Requirements: ORDER BY idx (preserves insertion order)
+SELECT * FROM requirements WHERE opportunity_id = ? ORDER BY idx;
+
+-- Audit events: ORDER BY idx (monotonic append index)
+SELECT * FROM audit_events WHERE trace_id = ? ORDER BY idx;
+```
+
+### JSON Serialization
+
+Tags and arrays are serialized to JSON using `nlohmann::json`:
+
+```cpp
+// Serialize
+nlohmann::json tags_json = atom.tags;
+sqlite3_bind_text(stmt, idx, tags_json.dump().c_str(), -1, SQLITE_TRANSIENT);
+
+// Deserialize
+std::string tags_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, idx));
+nlohmann::json tags_json = nlohmann::json::parse(tags_str);
+atom.tags = tags_json.get<std::vector<std::string>>();
+```
+
+**Determinism:** `nlohmann::json` produces deterministic output for arrays.
+
+### CLI Usage
+
+#### Default (In-Memory)
+
+```bash
+./ccmcp_cli
+# Uses in-memory repositories (no persistence)
+```
+
+#### With SQLite
+
+```bash
+./ccmcp_cli --db path/to/database.sqlite
+# Uses SQLite persistence
+```
+
+**File vs In-Memory:**
+```bash
+./ccmcp_cli --db ":memory:"
+# In-memory SQLite (useful for testing)
+```
+
+**Database Creation:**
+- If database file doesn't exist, it's created automatically
+- Schema v1 is applied on first run
+
+#### Example: Persistent Workflow
+
+```bash
+# Run 1: Create database and populate
+./ccmcp_cli --db career.db
+
+# Run 2: Database persists, can query existing data
+./ccmcp_cli --db career.db
+```
+
+### Transaction Handling
+
+**OpportunityRepository:** Uses transactions for atomic upserts (opportunity + requirements):
+
+```cpp
+db->exec("BEGIN TRANSACTION");
+// Upsert opportunity
+// Delete old requirements
+// Insert new requirements
+db->exec("COMMIT");
+```
+
+**Rollback on error:** If any step fails, transaction is rolled back.
+
+### Error Handling
+
+SQLite operations can fail (disk full, permissions, corruption). Error handling strategy:
+
+**Current (v0.2 Slice 2):**
+- Upsert operations: silent failure (matches in-memory semantics)
+- Query operations: return empty results on error
+
+**Future (v0.3+):**
+- Wrap operations in Result<T, StorageError>
+- Surface errors to caller
+- Add retry logic for transient failures
+
+### Testing Strategy
+
+**Integration Tests:**
+- `test_sqlite_atom_repository.cpp`: Roundtrip, ordering, upsert replace
+- `test_sqlite_opportunity_repository.cpp`: Requirements order preservation
+- `test_sqlite_audit_log.cpp`: Append-only, deterministic query
+
+**Test Database:** All tests use `:memory:` for fast, isolated testing.
+
+**Test Coverage:**
+- CRUD operations
+- Deterministic ordering (ORDER BY)
+- Edge cases (empty, missing, duplicates)
+- Transaction semantics (opportunity + requirements)
+
+### Performance Characteristics
+
+**In-Memory (Default):**
+- O(log n) upsert/get (std::map)
+- O(n) list operations
+- Zero I/O latency
+- No persistence
+
+**SQLite:**
+- O(log n) indexed lookups
+- O(n) full scans
+- Disk I/O latency
+- Durable persistence
+
+**Trade-off:** SQLite adds I/O overhead but provides durability.
+
+**Optimization opportunities (future):**
+- Prepared statement caching
+- Batch inserts (BEGIN/COMMIT around loops)
+- Index tuning
+
+### File Layout
+
+```
+include/ccmcp/storage/sqlite/
+├── sqlite_db.h                      # Database management, schema versioning
+├── sqlite_atom_repository.h
+├── sqlite_opportunity_repository.h
+├── sqlite_interaction_repository.h
+└── sqlite_audit_log.h
+
+src/storage/sqlite/
+├── sqlite_db.cpp                    # Schema v1 embedded as const char*
+├── sqlite_atom_repository.cpp
+├── sqlite_opportunity_repository.cpp
+├── sqlite_interaction_repository.cpp
+└── sqlite_audit_log.cpp
+
+resources/sqlite/
+└── schema_v1.sql                    # SQL schema (reference, not used at runtime)
+```
+
+### Dependencies
+
+**vcpkg.json:**
+```json
+"dependencies": [
+  "sqlite3"
+]
+```
+
+**CMake:**
+```cmake
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
+target_link_libraries(ccmcp PUBLIC unofficial::sqlite3::sqlite3)
+```
+
+### Future Enhancements (Post-v0.2)
+
+**v0.3: Advanced SQLite Features**
+- Connection pooling (multi-threaded)
+- WAL mode (Write-Ahead Logging)
+- Prepared statement cache
+- Batch insert optimization
+
+**v0.4: Migrations**
+- Schema v2, v3, etc.
+- Incremental migration system
+- Rollback support
+
+**v0.5: Backup/Export**
+- SQLite backup API
+- Export to JSON
+- Import from JSON
+
+---
+
+## Summary: v0.2 Complete Architecture
+
+| Component          | Implementation   | Purpose                          | Status |
+|--------------------|------------------|----------------------------------|--------|
+| Atoms              | SQLite           | Canonical persistence            | ✅     |
+| Opportunities      | SQLite           | Canonical persistence            | ✅     |
+| Interactions       | SQLite           | Canonical persistence            | ✅     |
+| Audit Events       | SQLite           | Append-only log                  | ✅     |
+| Vector Index       | NullEmbeddingIndex | Placeholder for LanceDB        | ✅     |
+| In-Memory          | Available        | Testing, development             | ✅     |
+
+**Next Steps:**
+- v0.2 Slice 3: LanceDB vector search
+- v0.2 Slice 4: Redis state machine
+- v0.2 Slice 5: MCP server

@@ -16,6 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 add_library(ccmcp
   src/core/hashing.cpp
@@ -36,6 +37,11 @@ add_library(ccmcp
   src/storage/inmemory_atom_repository.cpp
   src/storage/inmemory_opportunity_repository.cpp
   src/storage/inmemory_interaction_repository.cpp
+  src/storage/sqlite/sqlite_db.cpp
+  src/storage/sqlite/sqlite_atom_repository.cpp
+  src/storage/sqlite/sqlite_opportunity_repository.cpp
+  src/storage/sqlite/sqlite_interaction_repository.cpp
+  src/storage/sqlite/sqlite_audit_log.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
   src/vector/lancedb_embedding_index.cpp
@@ -51,6 +57,7 @@ target_link_libraries(ccmcp
   PUBLIC
     fmt::fmt
     nlohmann_json::nlohmann_json
+    unofficial::sqlite3::sqlite3
 )
 
 if(MSVC)
