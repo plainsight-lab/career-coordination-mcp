@@ -11,6 +11,11 @@ add_executable(ccmcp_tests
   test_validation_evidence_fail.cpp
   test_validation_warn.cpp
   test_validation_pass.cpp
+  test_inmemory_atom_repository.cpp
+  test_inmemory_opportunity_repository.cpp
+  test_inmemory_interaction_repository.cpp
+  test_null_embedding_index.cpp
+  test_inmemory_embedding_index.cpp
 )
 
 target_link_libraries(ccmcp_tests

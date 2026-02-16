@@ -33,6 +33,12 @@ add_library(ccmcp
   src/constitution/rules/evid_001.cpp
   src/constitution/rules/score_001.cpp
   src/storage/audit_log.cpp
+  src/storage/inmemory_atom_repository.cpp
+  src/storage/inmemory_opportunity_repository.cpp
+  src/storage/inmemory_interaction_repository.cpp
+  src/vector/null_embedding_index.cpp
+  src/vector/inmemory_embedding_index.cpp
+  src/vector/lancedb_embedding_index.cpp
   src/matching/matcher.cpp
 )
 
