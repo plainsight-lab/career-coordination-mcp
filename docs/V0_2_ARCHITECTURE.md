@@ -1094,6 +1094,354 @@ tests/
 | Hybrid Retrieval   | Lexical + Embedding | Recall expansion             | ✅     |
 | In-Memory          | Available        | Testing, development             | ✅     |
 
+---
+
+## v0.2 Slice 4: Redis-backed Interaction State Machine
+
+### Overview
+
+Redis provides atomic, idempotent coordination for Interaction state transitions. Redis is **NOT** a general-purpose datastore—it is used **only** for coordinating the Interaction state machine to ensure correctness under concurrency.
+
+**Status:** ✅ Implemented in v0.2 Slice 4
+
+### Architecture Decision
+
+**Redis Scope: Interaction Coordination Only**
+
+- **Canonical Persistence**: SQLite (atoms, opportunities, interactions, audit events)
+- **Coordination Layer**: Redis (interaction state + transition index + idempotency receipts)
+- **Purpose**: Atomic transitions + idempotency + conflict detection
+
+Redis does NOT store:
+- Atoms, opportunities, or match reports
+- Audit events (those go to SQLite via IAuditLog)
+- Any domain data beyond interaction state coordination
+
+### Why Redis for Interaction Coordination?
+
+**Problem**: Multiple workers attempting concurrent state transitions must not corrupt state.
+
+**Solution**: Redis provides atomic operations (via Lua scripts) to:
+1. Check idempotency receipt (has this transition already been applied?)
+2. Validate current state and transition_index (detect conflicts)
+3. Update state + increment transition_index
+4. Record idempotency receipt
+
+All in one atomic operation.
+
+### IInteractionCoordinator Interface
+
+```cpp
+class IInteractionCoordinator {
+ public:
+  // Apply state transition atomically with idempotency
+  TransitionResult apply_transition(
+      const InteractionId& interaction_id,
+      InteractionEvent event,
+      const std::string& idempotency_key);
+
+  // Get current state and transition index
+  std::optional<StateInfo> get_state(const InteractionId& interaction_id) const;
+
+  // Initialize new interaction
+  bool create_interaction(const InteractionId& interaction_id,
+                         const ContactId& contact_id,
+                         const OpportunityId& opportunity_id);
+};
+```
+
+**TransitionOutcome:**
+- `kApplied`: Transition successfully applied
+- `kAlreadyApplied`: Idempotency—same key already applied
+- `kConflict`: Concurrent modification detected (reserved for future use)
+- `kNotFound`: Interaction does not exist
+- `kInvalidTransition`: Domain validation failed (not allowed from current state)
+- `kBackendError`: Redis unavailable or error
+
+### Redis Data Model
+
+#### State Record
+
+**Key**: `ccmcp:interaction:{id}:state` (Redis hash)
+
+**Fields**:
+- `state` (int): InteractionState enum value (0=kDraft, 1=kReady, 2=kSent, 3=kResponded, 4=kClosed)
+- `transition_index` (int): Monotonic counter for optimistic concurrency control
+- `contact_id` (string): Associated contact
+- `opportunity_id` (string): Associated opportunity
+
+**Example**:
+```
+HGETALL ccmcp:interaction:int-001:state
+> state: 2
+> transition_index: 3
+> contact_id: contact-001
+> opportunity_id: opp-001
+```
+
+#### Idempotency Receipt
+
+**Key**: `ccmcp:interaction:{id}:idem:{idempotency_key}` (Redis hash)
+
+**Fields**:
+- `after_state` (int): State after transition was applied
+- `transition_index` (int): Transition index when applied
+- `applied_event` (int): Event that was applied
+
+**Purpose**: Detect replays of the same idempotency key.
+
+**Example**:
+```
+HGETALL ccmcp:interaction:int-001:idem:request-abc-123
+> after_state: 1
+> transition_index: 1
+> applied_event: 0
+```
+
+**TTL**: No expiration by default (for determinism and simplicity). Future: configurable TTL.
+
+### Atomicity via Lua Script
+
+**Strategy**: Single Lua script performs:
+1. Check if interaction exists (`EXISTS`)
+2. Check idempotency receipt (`EXISTS`)
+3. If receipt exists, return `kAlreadyApplied` with cached result
+4. Read current state and transition_index (`HGETALL`)
+5. Update state and increment transition_index (`HSET`)
+6. Write idempotency receipt (`HSET`)
+
+**Guarantees**:
+- Atomic: All steps succeed or all fail
+- No race conditions: Script executes atomically on Redis server
+- Idempotent: Same key returns same result
+
+**Lua Script** (simplified):
+```lua
+-- Check existence
+if redis.call('EXISTS', state_key) == 0 then
+  return {3, 0, 0, 0}  -- NotFound
+end
+
+-- Check idempotency
+if redis.call('EXISTS', idem_key) == 1 then
+  local after_state = redis.call('HGET', idem_key, 'after_state')
+  local transition_index = redis.call('HGET', idem_key, 'transition_index')
+  return {1, after_state, after_state, transition_index}  -- AlreadyApplied
+end
+
+-- Update state
+local current_state = redis.call('HGET', state_key, 'state')
+local current_index = redis.call('HGET', state_key, 'transition_index')
+local next_index = current_index + 1
+
+redis.call('HSET', state_key, 'state', new_state)
+redis.call('HSET', state_key, 'transition_index', next_index)
+
+-- Record idempotency receipt
+redis.call('HSET', idem_key, 'after_state', new_state)
+redis.call('HSET', idem_key, 'transition_index', next_index)
+redis.call('HSET', idem_key, 'applied_event', event)
+
+return {0, current_state, new_state, next_index}  -- Applied
+```
+
+### Domain Validation
+
+**Important**: Transition validation logic remains in domain code (`Interaction::can_transition`).
+
+**Flow**:
+1. Coordinator reads current state from Redis
+2. Calls `Interaction::can_transition(event)` to validate
+3. If invalid, returns `kInvalidTransition` (does NOT call Lua script)
+4. If valid, computes new state via `Interaction::apply(event)`
+5. Passes new state to Lua script for atomic commit
+
+**Rationale**: Keep domain logic in domain code, not in Lua scripts.
+
+### Idempotency Semantics
+
+**First Call** (with idempotency key `K`):
+- Validates transition
+- Applies transition
+- Increments transition_index
+- Records receipt for key `K`
+- Returns `kApplied`
+
+**Second Call** (same key `K`):
+- Checks receipt for key `K`
+- Receipt exists: returns `kAlreadyApplied` with cached `after_state` and `transition_index`
+- **Does NOT** apply transition again
+- **Does NOT** increment transition_index
+
+**Different Keys**: Each unique idempotency key applies once.
+
+### Conflict Detection
+
+**Optimistic Concurrency**: `transition_index` acts as version number.
+
+**Scenario**: Two workers race to apply different transitions:
+- Worker A: Reads state (transition_index=5), validates, prepares transition
+- Worker B: Reads state (transition_index=5), validates, prepares transition
+- Worker A: Commits first (transition_index=6)
+- Worker B: Commits second
+
+**Current Behavior**: Worker B succeeds if transition is still valid from new state.
+
+**Future Enhancement** (not in v0.2): Explicit optimistic lock check in Lua script.
+
+### Implementations
+
+#### InMemoryInteractionCoordinator
+
+**Purpose**: Default coordinator for testing and development.
+
+**Storage**: `std::map` with `std::mutex` for thread safety.
+
+**Features**:
+- Idempotency tracking (in-memory map)
+- Deterministic (no time dependencies)
+- No external dependencies
+- Used by all unit tests
+
+**Usage**:
+```cpp
+interaction::InMemoryInteractionCoordinator coordinator;
+coordinator.create_interaction(id, contact, opportunity);
+auto result = coordinator.apply_transition(id, event, "idem-key-001");
+```
+
+#### RedisInteractionCoordinator
+
+**Purpose**: Production coordinator with Redis backend.
+
+**Connection**: Requires Redis URI (e.g., `"tcp://127.0.0.1:6379"`).
+
+**Features**:
+- Atomic transitions via Lua script
+- Idempotency receipts in Redis
+- Throws `std::runtime_error` if Redis unavailable
+
+**Usage**:
+```cpp
+try {
+  interaction::RedisInteractionCoordinator coordinator("tcp://localhost:6379");
+  coordinator.create_interaction(id, contact, opportunity);
+  auto result = coordinator.apply_transition(id, event, "idem-key-001");
+} catch (const std::runtime_error& e) {
+  // Handle Redis connection failure
+}
+```
+
+### CLI Integration
+
+**Note**: CLI integration for Redis coordinator is **not yet implemented** in v0.2 Slice 4.
+
+**Planned CLI Flags** (future):
+```bash
+# Use in-memory coordinator (default)
+./ccmcp_cli
+
+# Use Redis coordinator
+./ccmcp_cli --interaction-backend redis --redis tcp://localhost:6379
+```
+
+**Current Status**: Coordinators implemented and tested, but not wired into CLI Services container.
+
+### Testing Strategy
+
+#### Unit Tests (Always Run)
+
+**File**: `test_inmemory_interaction_coordinator.cpp`
+
+**Tests**:
+- Create and get state
+- Valid transitions
+- Invalid transitions
+- Idempotency (same key returns AlreadyApplied)
+- Idempotency (different keys both apply)
+- Transition on non-existent interaction
+- Full state machine lifecycle (kDraft → kReady → kSent → kResponded → kClosed)
+
+**All tests pass without Redis.**
+
+#### Integration Tests (Opt-in)
+
+**File**: `test_redis_interaction_coordinator.cpp`
+
+**Requires**: Redis running at `tcp://127.0.0.1:6379` (or `CCMCP_REDIS_URI` environment variable)
+
+**Enable**:
+```bash
+export CCMCP_TEST_REDIS=1
+./build/tests/ccmcp_tests "[redis]"
+```
+
+**Tests**:
+- Idempotency (same key returns AlreadyApplied)
+- Concurrent transitions (one succeeds, other detects invalid)
+- Valid transition sequence
+- Invalid transition rejected
+
+**Default**: Tests are skipped if `CCMCP_TEST_REDIS` is not set.
+
+### Error Handling
+
+**Redis Unavailable**: Returns `TransitionOutcome::kBackendError` with error message.
+
+**Domain Validation Failure**: Returns `TransitionOutcome::kInvalidTransition`.
+
+**Interaction Not Found**: Returns `TransitionOutcome::kNotFound`.
+
+**Idempotency Replay**: Returns `TransitionOutcome::kAlreadyApplied` (not an error).
+
+### Performance Characteristics
+
+**In-Memory Coordinator**:
+- O(1) create, get_state, apply_transition
+- Thread-safe via coarse-grained mutex
+- No I/O latency
+
+**Redis Coordinator**:
+- O(1) create, get_state, apply_transition (single Redis round-trip each)
+- Network I/O latency to Redis
+- Atomic via Lua script (no multi-round-trip WATCH/MULTI/EXEC)
+
+### Future Enhancements (Post-v0.2)
+
+**v0.3: CLI Integration**
+- Wire RedisInteractionCoordinator into Services
+- Add `--interaction-backend` and `--redis` CLI flags
+- Support both in-memory and Redis modes
+
+**v0.4: TTL Configuration**
+- Configurable TTL for idempotency receipts
+- Default: no TTL (determinism)
+- Optional: 24-hour TTL for production cleanup
+
+**v0.5: Explicit Optimistic Locking**
+- Pass expected transition_index to Lua script
+- Return `kConflict` if index mismatch (stale read)
+- Enable retry logic in application layer
+
+**v0.6: Redis Sentinel/Cluster**
+- Support Redis Sentinel for high availability
+- Support Redis Cluster for horizontal scaling
+
+---
+
+## Summary: v0.2 Complete Architecture
+
+| Component          | Implementation   | Purpose                          | Status |
+|--------------------|------------------|----------------------------------|--------|
+| Atoms              | SQLite           | Canonical persistence            | ✅     |
+| Opportunities      | SQLite           | Canonical persistence            | ✅     |
+| Interactions       | SQLite           | Canonical persistence            | ✅     |
+| Interaction Coordination | Redis      | Atomic state transitions         | ✅     |
+| Audit Events       | SQLite           | Append-only log                  | ✅     |
+| Vector Index       | InMemoryVectorIndex | Testing/development           | ✅     |
+| Embedding Provider | DeterministicStubEmbeddingProvider | Testing       | ✅     |
+| Hybrid Retrieval   | Lexical + Embedding | Recall expansion             | ✅     |
+| In-Memory          | Available        | Testing, development             | ✅     |
+
 **Next Steps:**
-- v0.2 Slice 4: Redis state machine
 - v0.2 Slice 5: MCP server

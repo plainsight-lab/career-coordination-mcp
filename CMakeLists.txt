@@ -17,6 +17,7 @@ find_package(fmt CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(redis++ CONFIG REQUIRED)
 
 add_library(ccmcp
   src/core/hashing.cpp
@@ -46,6 +47,8 @@ add_library(ccmcp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
   src/vector/lancedb_embedding_index.cpp
+  src/interaction/inmemory_interaction_coordinator.cpp
+  src/interaction/redis_interaction_coordinator.cpp
   src/matching/matcher.cpp
 )
 
@@ -59,6 +62,7 @@ target_link_libraries(ccmcp
     fmt::fmt
     nlohmann_json::nlohmann_json
     unofficial::sqlite3::sqlite3
+    redis++::redis++_static
 )
 
 if(MSVC)
