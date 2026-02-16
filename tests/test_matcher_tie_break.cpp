@@ -1,3 +1,4 @@
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -10,8 +11,10 @@ using namespace ccmcp;
 
 TEST_CASE("Matcher tie-breaks by atom_id", "[matching][tie-break]") {
   SECTION("atoms with identical scores use lexicographic atom_id ordering") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -50,8 +53,10 @@ TEST_CASE("Matcher tie-breaks by atom_id", "[matching][tie-break]") {
   }
 
   SECTION("tie-break is deterministic across runs") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 

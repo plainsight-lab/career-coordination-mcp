@@ -1,7 +1,7 @@
 #pragma once
 
-#include <atomic>
-#include <chrono>
+#include "ccmcp/core/id_generator.h"
+
 #include <string>
 
 namespace ccmcp::core {
@@ -40,45 +40,32 @@ struct TraceId {
   auto operator<=>(const TraceId&) const = default;
 };
 
-// Deterministic mode for testing/demos (set before any ID generation)
-inline bool& deterministic_ids() {
-  static bool deterministic = false;
-  return deterministic;
+// Thin helper functions with explicit ID generator injection.
+// These are pure wrappers with no hidden policy - they delegate to IIdGenerator.
+// Prefer these over the compatibility functions above.
+
+inline AtomId new_atom_id(IIdGenerator& gen) {
+  return AtomId{gen.next("atom")};
 }
 
-inline std::string make_id(const char* prefix) {
-  static std::atomic<unsigned long long> counter{0};
-
-  if (deterministic_ids()) {
-    // Deterministic mode: use only sequential counter (for demos/tests)
-    const auto c = counter.fetch_add(1, std::memory_order_relaxed);
-    return std::string(prefix) + "-" + std::to_string(c);
-  }
-
-  // Production mode: timestamp + counter for uniqueness
-  const auto now = std::chrono::system_clock::now().time_since_epoch();
-  const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
-  const auto c = counter.fetch_add(1, std::memory_order_relaxed);
-  return std::string(prefix) + "-" + std::to_string(micros) + "-" + std::to_string(c);
+inline OpportunityId new_opportunity_id(IIdGenerator& gen) {
+  return OpportunityId{gen.next("opp")};
 }
 
-inline AtomId new_atom_id() {
-  return AtomId{make_id("atom")};
+inline ContactId new_contact_id(IIdGenerator& gen) {
+  return ContactId{gen.next("contact")};
 }
-inline OpportunityId new_opportunity_id() {
-  return OpportunityId{make_id("opp")};
+
+inline InteractionId new_interaction_id(IIdGenerator& gen) {
+  return InteractionId{gen.next("interaction")};
 }
-inline ContactId new_contact_id() {
-  return ContactId{make_id("contact")};
+
+inline ResumeId new_resume_id(IIdGenerator& gen) {
+  return ResumeId{gen.next("resume")};
 }
-inline InteractionId new_interaction_id() {
-  return InteractionId{make_id("interaction")};
-}
-inline ResumeId new_resume_id() {
-  return ResumeId{make_id("resume")};
-}
-inline TraceId new_trace_id() {
-  return TraceId{make_id("trace")};
+
+inline TraceId new_trace_id(IIdGenerator& gen) {
+  return TraceId{gen.next("trace")};
 }
 
 }  // namespace ccmcp::core

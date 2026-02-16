@@ -1,6 +1,7 @@
 #include "ccmcp/constitution/match_report_view.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/match_report.h"
 
@@ -12,6 +13,8 @@ using namespace ccmcp::constitution;
 
 TEST_CASE("Validation fails when evidence is missing", "[validation][evidence]") {
   SECTION("matched requirement with empty evidence_tokens triggers FAIL") {
+    ccmcp::core::DeterministicIdGenerator gen;
+
     // Create valid schema but missing evidence
     ccmcp::domain::MatchReport report;
     report.overall_score = 0.5;
@@ -20,7 +23,7 @@ TEST_CASE("Validation fails when evidence is missing", "[validation][evidence]")
     req_match.requirement_text = "Python experience";
     req_match.matched = true;
     req_match.best_score = 0.5;
-    req_match.contributing_atom_id = ccmcp::core::new_atom_id();
+    req_match.contributing_atom_id = ccmcp::core::new_atom_id(gen);
     req_match.evidence_tokens = {};  // Empty! (EVID-001 violation)
 
     report.requirement_matches.push_back(req_match);

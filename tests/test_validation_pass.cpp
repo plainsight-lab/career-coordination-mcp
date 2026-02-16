@@ -1,6 +1,7 @@
 #include "ccmcp/constitution/match_report_view.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/match_report.h"
 
@@ -12,6 +13,8 @@ using namespace ccmcp::constitution;
 
 TEST_CASE("Validation passes for fully valid MatchReport", "[validation][pass]") {
   SECTION("valid MatchReport with matched requirements passes") {
+    ccmcp::core::DeterministicIdGenerator gen;
+
     // Create fully valid MatchReport
     ccmcp::domain::MatchReport report;
     report.overall_score = 0.75;
@@ -21,7 +24,7 @@ TEST_CASE("Validation passes for fully valid MatchReport", "[validation][pass]")
     req_match1.requirement_text = "Python experience";
     req_match1.matched = true;
     req_match1.best_score = 0.8;
-    req_match1.contributing_atom_id = ccmcp::core::new_atom_id();
+    req_match1.contributing_atom_id = ccmcp::core::new_atom_id(gen);
     req_match1.evidence_tokens = {"experience", "python"};
 
     // Valid unmatched requirement
@@ -36,7 +39,7 @@ TEST_CASE("Validation passes for fully valid MatchReport", "[validation][pass]")
     req_match3.requirement_text = "Cloud architecture";
     req_match3.matched = true;
     req_match3.best_score = 0.5;
-    req_match3.contributing_atom_id = ccmcp::core::new_atom_id();
+    req_match3.contributing_atom_id = ccmcp::core::new_atom_id(gen);
     req_match3.evidence_tokens = {"architecture"};
 
     report.requirement_matches.push_back(req_match1);
@@ -67,6 +70,8 @@ TEST_CASE("Validation passes for fully valid MatchReport", "[validation][pass]")
   }
 
   SECTION("findings are sorted deterministically") {
+    ccmcp::core::DeterministicIdGenerator gen;
+
     // Create report with multiple violations to test sorting
     ccmcp::domain::MatchReport report;
     report.overall_score = 0.0;  // Will trigger SCORE-001 WARN
@@ -76,7 +81,7 @@ TEST_CASE("Validation passes for fully valid MatchReport", "[validation][pass]")
     req_match1.requirement_text = "Test1";
     req_match1.matched = true;
     req_match1.best_score = 0.5;
-    req_match1.contributing_atom_id = ccmcp::core::new_atom_id();
+    req_match1.contributing_atom_id = ccmcp::core::new_atom_id(gen);
     req_match1.evidence_tokens = {};  // Missing evidence
 
     // Invalid schema (SCHEMA-001 BLOCK)

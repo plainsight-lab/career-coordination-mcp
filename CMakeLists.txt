@@ -19,6 +19,8 @@ find_package(Catch2 CONFIG REQUIRED)
 
 add_library(ccmcp
   src/core/hashing.cpp
+  src/core/id_generator.cpp
+  src/core/clock.cpp
   src/domain/experience_atom.cpp
   src/domain/requirement.cpp
   src/domain/opportunity.cpp

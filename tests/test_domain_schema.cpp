@@ -1,3 +1,5 @@
+#include "ccmcp/core/id_generator.h"
+#include "ccmcp/core/ids.h"
 #include "ccmcp/core/normalization.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -148,8 +150,10 @@ TEST_CASE("trim removes leading and trailing whitespace", "[normalization]") {
 
 TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
   SECTION("normalizes domain to lowercase") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "  Enterprise ARCHITECTURE  ";
     atom.claim = "Test claim";
     atom.tags = {"Python", "AWS"};
@@ -159,8 +163,10 @@ TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
   }
 
   SECTION("trims title and claim") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "security";
     atom.title = "  Security Lead  ";
     atom.claim = "  Designed secure systems  ";
@@ -172,8 +178,10 @@ TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
   }
 
   SECTION("normalizes tags: lowercase, sorted, deduplicated") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "ai";
     atom.claim = "Built ML models";
     atom.tags = {"Python", "TensorFlow", "python", "AWS"};
@@ -186,8 +194,10 @@ TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
   }
 
   SECTION("trims and filters empty evidence_refs") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "backend";
     atom.claim = "Built scalable APIs";
     atom.evidence_refs = {"  https://example.com  ", "  ", "github.com/project"};
@@ -199,8 +209,10 @@ TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
   }
 
   SECTION("preserves atom_id and verified flag") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "data";
     atom.claim = "Analyzed large datasets";
     atom.verified = true;
@@ -213,8 +225,10 @@ TEST_CASE("ExperienceAtom normalization is deterministic", "[domain][atom]") {
 
 TEST_CASE("ExperienceAtom validation enforces invariants", "[domain][atom]") {
   SECTION("valid normalized atom passes validation") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "backend";  // already lowercase
     atom.claim = "Built APIs";
     atom.tags = {"go", "python"};  // already normalized
@@ -236,8 +250,10 @@ TEST_CASE("ExperienceAtom validation enforces invariants", "[domain][atom]") {
   }
 
   SECTION("rejects empty claim") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "test";
     atom.claim = "";
 
@@ -247,8 +263,10 @@ TEST_CASE("ExperienceAtom validation enforces invariants", "[domain][atom]") {
   }
 
   SECTION("rejects unnormalized domain") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "BACKEND";  // uppercase
     atom.claim = "Test";
 
@@ -258,8 +276,10 @@ TEST_CASE("ExperienceAtom validation enforces invariants", "[domain][atom]") {
   }
 
   SECTION("rejects unnormalized tags") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "backend";
     atom.claim = "Test";
     atom.tags = {"Python", "Go"};  // Not lowercase
@@ -335,8 +355,10 @@ TEST_CASE("Requirement validation enforces invariants", "[domain][requirement]")
 
 TEST_CASE("Opportunity normalization is deterministic", "[domain][opportunity]") {
   SECTION("trims company and role_title") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "  Acme Corp  ";
     opp.role_title = "  Senior Engineer  ";
 
@@ -346,8 +368,10 @@ TEST_CASE("Opportunity normalization is deterministic", "[domain][opportunity]")
   }
 
   SECTION("normalizes requirements in order") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "Test";
     opp.role_title = "Engineer";
 
@@ -371,8 +395,10 @@ TEST_CASE("Opportunity normalization is deterministic", "[domain][opportunity]")
   }
 
   SECTION("preserves requirements order (does not sort)") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "Test";
     opp.role_title = "Engineer";
 
@@ -392,8 +418,10 @@ TEST_CASE("Opportunity normalization is deterministic", "[domain][opportunity]")
 
 TEST_CASE("Opportunity validation enforces invariants", "[domain][opportunity]") {
   SECTION("valid opportunity passes") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "Acme";
     opp.role_title = "Engineer";
 
@@ -418,8 +446,10 @@ TEST_CASE("Opportunity validation enforces invariants", "[domain][opportunity]")
   }
 
   SECTION("rejects empty company") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "";
     opp.role_title = "Test";
 
@@ -429,8 +459,10 @@ TEST_CASE("Opportunity validation enforces invariants", "[domain][opportunity]")
   }
 
   SECTION("rejects empty role_title") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "Test";
     opp.role_title = "";
 
@@ -440,8 +472,10 @@ TEST_CASE("Opportunity validation enforces invariants", "[domain][opportunity]")
   }
 
   SECTION("rejects invalid requirement") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "Test";
     opp.role_title = "Test";
 
@@ -461,8 +495,10 @@ TEST_CASE("Opportunity validation enforces invariants", "[domain][opportunity]")
 
 TEST_CASE("Schema normalization produces stable output", "[golden]") {
   SECTION("atom tag serialization is stable") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "AI/ML";
     atom.claim = "Built recommendation systems";
     atom.tags = {"Python", "TensorFlow", "AWS", "docker"};
@@ -482,8 +518,10 @@ TEST_CASE("Schema normalization produces stable output", "[golden]") {
   }
 
   SECTION("repeated normalization is idempotent") {
+    core::DeterministicIdGenerator gen;
+
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "Security";
     atom.claim = "Implemented auth systems";
     atom.tags = {"OAuth", "JWT", "SAML"};

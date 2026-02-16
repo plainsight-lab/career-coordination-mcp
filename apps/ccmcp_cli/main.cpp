@@ -1,3 +1,5 @@
+#include "ccmcp/core/clock.h"
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -12,25 +14,26 @@
 #include <vector>
 
 int main() {
-  // Enable deterministic IDs for reproducible demo output
-  ccmcp::core::deterministic_ids() = true;
-
   std::cout << "career-coordination-mcp v0.1\n";
+
+  // Inject deterministic generators for reproducible demo output
+  ccmcp::core::DeterministicIdGenerator id_gen;
+  ccmcp::core::FixedClock clock("2026-01-01T00:00:00Z");
 
   // Initialize audit log
   ccmcp::storage::InMemoryAuditLog audit_log;
-  auto trace_id = ccmcp::core::new_trace_id();
+  auto trace_id = ccmcp::core::new_trace_id(id_gen);
 
   // Emit RunStarted event
-  audit_log.append({ccmcp::core::make_id("evt"),
+  audit_log.append({id_gen.next("evt"),
                     trace_id.value,
                     "RunStarted",
                     R"({"cli_version":"v0.1","deterministic":true})",
-                    "2026-01-01T00:00:00Z",  // Fixed timestamp for determinism
+                    clock.now_iso8601(),
                     {}});
 
   ccmcp::domain::Opportunity opportunity{};
-  opportunity.opportunity_id = ccmcp::core::new_opportunity_id();
+  opportunity.opportunity_id = ccmcp::core::new_opportunity_id(id_gen);
   opportunity.company = "ExampleCo";
   opportunity.role_title = "Principal Architect";
   opportunity.source = "manual";
@@ -40,14 +43,14 @@ int main() {
   };
 
   std::vector<ccmcp::domain::ExperienceAtom> atoms;
-  atoms.push_back({ccmcp::core::new_atom_id(),
+  atoms.push_back({ccmcp::core::new_atom_id(id_gen),
                    "architecture",
                    "Architecture Leadership",
                    "Led architecture decisions",
                    {"architecture", "governance"},
                    true,
                    {}});
-  atoms.push_back({ccmcp::core::new_atom_id(),
+  atoms.push_back({ccmcp::core::new_atom_id(id_gen),
                    "cpp",
                    "Modern C++",
                    "Built C++20 systems",
@@ -59,12 +62,12 @@ int main() {
   const auto report = matcher.evaluate(opportunity, atoms);
 
   // Emit MatchCompleted event
-  audit_log.append({ccmcp::core::make_id("evt"),
+  audit_log.append({id_gen.next("evt"),
                     trace_id.value,
                     "MatchCompleted",
                     R"({"opportunity_id":")" + report.opportunity_id.value +
                         R"(","overall_score":)" + std::to_string(report.overall_score) + "}",
-                    "2026-01-01T00:00:01Z",
+                    clock.now_iso8601(),
                     {report.opportunity_id.value}});
 
   nlohmann::json out;
@@ -85,11 +88,11 @@ int main() {
   std::cout << out.dump(2) << "\n";
 
   // Emit RunCompleted event
-  audit_log.append({ccmcp::core::make_id("evt"),
+  audit_log.append({id_gen.next("evt"),
                     trace_id.value,
                     "RunCompleted",
                     R"({"status":"success"})",
-                    "2026-01-01T00:00:02Z",
+                    clock.now_iso8601(),
                     {}});
 
   // Print audit trail for verification

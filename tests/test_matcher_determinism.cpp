@@ -1,3 +1,4 @@
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -12,9 +13,11 @@ using namespace ccmcp;
 
 TEST_CASE("Matcher produces deterministic results", "[matching][determinism]") {
   SECTION("identical input produces identical output") {
+    core::DeterministicIdGenerator gen;
+
     // Setup identical opportunity
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -73,8 +76,10 @@ TEST_CASE("Matcher produces deterministic results", "[matching][determinism]") {
   }
 
   SECTION("evidence tokens are sorted and stable") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -84,7 +89,7 @@ TEST_CASE("Matcher produces deterministic results", "[matching][determinism]") {
 
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.claim = "terraform aws kubernetes infrastructure";
     atom.tags = {"aws", "kubernetes", "terraform"};
     atom.verified = true;

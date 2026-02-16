@@ -1,3 +1,4 @@
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -10,9 +11,11 @@ using namespace ccmcp;
 
 TEST_CASE("Matcher produces lexical overlap scores", "[matching][basic]") {
   SECTION("requirement matches atom with overlapping tokens") {
+    core::DeterministicIdGenerator gen;
+
     // Setup: Opportunity with one requirement
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Architect";
 
@@ -26,7 +29,7 @@ TEST_CASE("Matcher produces lexical overlap scores", "[matching][basic]") {
     std::vector<domain::ExperienceAtom> atoms;
 
     domain::ExperienceAtom atom_a;
-    atom_a.atom_id = core::new_atom_id();
+    atom_a.atom_id = core::new_atom_id(gen);
     atom_a.domain = "architecture";
     atom_a.title = "Architecture Lead";
     atom_a.claim = "Led C++ architecture decisions for governance systems";
@@ -35,7 +38,7 @@ TEST_CASE("Matcher produces lexical overlap scores", "[matching][basic]") {
     atoms.push_back(atom_a);
 
     domain::ExperienceAtom atom_b;
-    atom_b.atom_id = core::new_atom_id();
+    atom_b.atom_id = core::new_atom_id(gen);
     atom_b.domain = "backend";
     atom_b.title = "Backend Developer";
     atom_b.claim = "Built Python microservices";
@@ -68,8 +71,10 @@ TEST_CASE("Matcher produces lexical overlap scores", "[matching][basic]") {
   }
 
   SECTION("unverified atoms are not considered") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Architect";
 
@@ -80,7 +85,7 @@ TEST_CASE("Matcher produces lexical overlap scores", "[matching][basic]") {
     // Atom matches requirement but is not verified
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.domain = "backend";
     atom.claim = "Built Python systems";
     atom.tags = {"python"};

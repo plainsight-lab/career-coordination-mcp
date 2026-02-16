@@ -1,3 +1,4 @@
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -9,8 +10,10 @@
 #include <vector>
 
 TEST_CASE("Matcher only considers verified atoms", "[matching]") {
+  ccmcp::core::DeterministicIdGenerator gen;
+
   ccmcp::domain::Opportunity opportunity{};
-  opportunity.opportunity_id = ccmcp::core::new_opportunity_id();
+  opportunity.opportunity_id = ccmcp::core::new_opportunity_id(gen);
   opportunity.company = "TestCo";
   opportunity.role_title = "Engineer";
 
@@ -23,7 +26,7 @@ TEST_CASE("Matcher only considers verified atoms", "[matching]") {
 
   // Verified atom that matches
   ccmcp::domain::ExperienceAtom verified_atom;
-  verified_atom.atom_id = ccmcp::core::new_atom_id();
+  verified_atom.atom_id = ccmcp::core::new_atom_id(gen);
   verified_atom.domain = "domain";
   verified_atom.title = "Domain Expert";
   verified_atom.claim = "Domain experience";
@@ -33,7 +36,7 @@ TEST_CASE("Matcher only considers verified atoms", "[matching]") {
 
   // Unverified atom (even though it would match, should be ignored)
   ccmcp::domain::ExperienceAtom unverified_atom;
-  unverified_atom.atom_id = ccmcp::core::new_atom_id();
+  unverified_atom.atom_id = ccmcp::core::new_atom_id(gen);
   unverified_atom.domain = "domain";
   unverified_atom.title = "Domain Expert";
   unverified_atom.claim = "Domain experience";

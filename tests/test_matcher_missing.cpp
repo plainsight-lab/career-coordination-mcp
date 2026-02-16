@@ -1,3 +1,4 @@
+#include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/domain/experience_atom.h"
 #include "ccmcp/domain/opportunity.h"
@@ -10,8 +11,10 @@ using namespace ccmcp;
 
 TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
   SECTION("requirement with no overlap is marked unmatched") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -22,7 +25,7 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
     // Atom has no overlap with requirement
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.claim = "Built Python web applications";
     atom.tags = {"python", "web"};
     atom.verified = true;
@@ -44,8 +47,10 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
   }
 
   SECTION("partial match does not appear in missing_requirements") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -59,7 +64,7 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
 
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.claim = "Built Python systems";
     atom.tags = {"python"};
     atom.verified = true;
@@ -83,15 +88,17 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
   }
 
   SECTION("zero requirements produces zero overall score") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
     opp.requirements = {};  // No requirements
 
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.claim = "Some experience";
     atom.verified = true;
     atoms.push_back(atom);
@@ -106,8 +113,10 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
   }
 
   SECTION("empty requirement text is marked unmatched") {
+    core::DeterministicIdGenerator gen;
+
     domain::Opportunity opp;
-    opp.opportunity_id = core::new_opportunity_id();
+    opp.opportunity_id = core::new_opportunity_id(gen);
     opp.company = "TestCo";
     opp.role_title = "Engineer";
 
@@ -117,7 +126,7 @@ TEST_CASE("Matcher handles missing requirements", "[matching][missing]") {
 
     std::vector<domain::ExperienceAtom> atoms;
     domain::ExperienceAtom atom;
-    atom.atom_id = core::new_atom_id();
+    atom.atom_id = core::new_atom_id(gen);
     atom.claim = "Experience";
     atom.verified = true;
     atoms.push_back(atom);
