@@ -1,0 +1,102 @@
+#pragma once
+
+#include "ccmcp/constitution/validation_engine.h"
+#include "ccmcp/constitution/validation_report.h"
+#include "ccmcp/core/clock.h"
+#include "ccmcp/core/id_generator.h"
+#include "ccmcp/core/ids.h"
+#include "ccmcp/core/services.h"
+#include "ccmcp/domain/interaction.h"
+#include "ccmcp/domain/match_report.h"
+#include "ccmcp/domain/opportunity.h"
+#include "ccmcp/interaction/interaction_coordinator.h"
+#include "ccmcp/matching/matcher.h"
+#include "ccmcp/storage/audit_event.h"
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace ccmcp::app {
+
+// ────────────────────────────────────────────────────────────────
+// Match Pipeline
+// ────────────────────────────────────────────────────────────────
+
+struct MatchPipelineRequest {
+  // Opportunity to match against (provide either opportunity OR opportunity_id)
+  std::optional<domain::Opportunity> opportunity;     // NOLINT(readability-identifier-naming)
+  std::optional<core::OpportunityId> opportunity_id;  // NOLINT(readability-identifier-naming)
+
+  // Atoms to match (provide either atoms OR atom_ids, or neither for all verified)
+  std::optional<std::vector<domain::ExperienceAtom>>
+      atoms;                                          // NOLINT(readability-identifier-naming)
+  std::optional<std::vector<core::AtomId>> atom_ids;  // NOLINT(readability-identifier-naming)
+
+  // Matching configuration
+  matching::MatchingStrategy strategy{
+      matching::MatchingStrategy::
+          kDeterministicLexicalV01};  // NOLINT(readability-identifier-naming)
+  size_t k_lex{25};                   // NOLINT(readability-identifier-naming)
+  size_t k_emb{25};                   // NOLINT(readability-identifier-naming)
+
+  // Optional trace_id (if not provided, will be generated)
+  std::optional<std::string> trace_id;  // NOLINT(readability-identifier-naming)
+};
+
+struct MatchPipelineResponse {
+  std::string trace_id;                              // NOLINT(readability-identifier-naming)
+  domain::MatchReport match_report;                  // NOLINT(readability-identifier-naming)
+  constitution::ValidationReport validation_report;  // NOLINT(readability-identifier-naming)
+};
+
+// Run matching + validation pipeline
+// Emits audit events: RunStarted, MatchCompleted, ValidationCompleted, RunCompleted
+[[nodiscard]] MatchPipelineResponse run_match_pipeline(const MatchPipelineRequest& req,
+                                                       core::Services& services,
+                                                       core::IIdGenerator& id_gen,
+                                                       core::IClock& clock);
+
+// ────────────────────────────────────────────────────────────────
+// Validation Pipeline (standalone)
+// ────────────────────────────────────────────────────────────────
+
+// Run validation only on an existing match report
+// Emits audit event: ValidationCompleted
+[[nodiscard]] constitution::ValidationReport run_validation_pipeline(
+    const domain::MatchReport& report, core::Services& services, core::IIdGenerator& id_gen,
+    core::IClock& clock, const std::string& trace_id);
+
+// ────────────────────────────────────────────────────────────────
+// Interaction Transition
+// ────────────────────────────────────────────────────────────────
+
+struct InteractionTransitionRequest {
+  core::InteractionId interaction_id;  // NOLINT(readability-identifier-naming)
+  domain::InteractionEvent event;      // NOLINT(readability-identifier-naming)
+  std::string idempotency_key;         // NOLINT(readability-identifier-naming)
+
+  // Optional trace_id (if not provided, will be generated)
+  std::optional<std::string> trace_id;  // NOLINT(readability-identifier-naming)
+};
+
+struct InteractionTransitionResponse {
+  std::string trace_id;                  // NOLINT(readability-identifier-naming)
+  interaction::TransitionResult result;  // NOLINT(readability-identifier-naming)
+};
+
+// Apply interaction state transition atomically
+// Emits audit events: InteractionTransitionAttempted, InteractionTransitionCompleted/Rejected
+[[nodiscard]] InteractionTransitionResponse run_interaction_transition(
+    const InteractionTransitionRequest& req, interaction::IInteractionCoordinator& coordinator,
+    core::Services& services, core::IIdGenerator& id_gen, core::IClock& clock);
+
+// ────────────────────────────────────────────────────────────────
+// Audit Trace
+// ────────────────────────────────────────────────────────────────
+
+// Fetch all audit events for a given trace_id
+[[nodiscard]] std::vector<storage::AuditEvent> fetch_audit_trace(const std::string& trace_id,
+                                                                 core::Services& services);
+
+}  // namespace ccmcp::app

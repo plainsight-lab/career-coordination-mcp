@@ -50,6 +50,7 @@ add_library(ccmcp
   src/interaction/inmemory_interaction_coordinator.cpp
   src/interaction/redis_interaction_coordinator.cpp
   src/matching/matcher.cpp
+  src/app/app_service.cpp
 )
 
 target_include_directories(ccmcp
@@ -72,6 +73,7 @@ else()
 endif()
 
 add_subdirectory(apps/ccmcp_cli)
+add_subdirectory(apps/mcp_server)
 
 enable_testing()
 add_subdirectory(tests)

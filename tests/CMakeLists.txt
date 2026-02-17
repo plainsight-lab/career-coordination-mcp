@@ -23,6 +23,8 @@ add_executable(ccmcp_tests
   test_sqlite_atom_repository.cpp
   test_sqlite_opportunity_repository.cpp
   test_sqlite_audit_log.cpp
+  test_app_match_pipeline.cpp
+  test_app_interaction_pipeline.cpp
 )
 
 target_link_libraries(ccmcp_tests

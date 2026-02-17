@@ -1445,3 +1445,255 @@ export CCMCP_TEST_REDIS=1
 
 **Next Steps:**
 - v0.2 Slice 5: MCP server
+## v0.2 Slice 5: MCP Protocol Server (Thin Transport Layer)
+
+### Overview
+
+The MCP server is a **thin transport layer** that exposes the career-coordination-mcp pipeline as Model Context Protocol (MCP) tools. It implements JSON-RPC 2.0 over stdio and delegates all business logic to the `app_service` layer.
+
+**Status:** ✅ Implemented in v0.2 Slice 5
+
+### Architecture Decision
+
+**Three-Layer Architecture:**
+
+```
+┌─────────────┐
+│ MCP Server  │ ← Transport layer (JSON-RPC, stdio)
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ app_service │ ← Business logic (match, validate, audit, interaction)
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│  Services   │ ← Data access (repos, audit, vector, coordinator)
+└─────────────┘
+```
+
+**Why app_service Layer?**
+
+Before v0.2 Slice 5, the CLI contained inline business logic. The MCP server introduction motivated extracting this logic into a reusable `app_service` layer to avoid duplication.
+
+**Benefits:**
+1. **No duplication**: CLI and MCP server share the same code paths
+2. **Testability**: Business logic tested independently of transport
+3. **Maintainability**: Protocol changes don't require rewriting business logic
+4. **Determinism**: Same inputs → same outputs, regardless of transport
+
+### app_service Layer
+
+#### Responsibilities
+
+- Run matching + validation pipeline
+- Run interaction state transitions
+- Emit audit events consistently
+- Manage trace_id propagation
+
+#### Public API
+
+```cpp
+// Match pipeline
+MatchPipelineResponse run_match_pipeline(
+    const MatchPipelineRequest& req,
+    Services& services,
+    IIdGenerator& id_gen,
+    IClock& clock);
+
+// Validation only
+ValidationReport run_validation_pipeline(
+    const MatchReport& report,
+    Services& services,
+    IIdGenerator& id_gen,
+    IClock& clock,
+    const std::string& trace_id);
+
+// Interaction transition
+InteractionTransitionResponse run_interaction_transition(
+    const InteractionTransitionRequest& req,
+    IInteractionCoordinator& coordinator,
+    Services& services,
+    IIdGenerator& id_gen,
+    IClock& clock);
+
+// Audit trace
+std::vector<AuditEvent> fetch_audit_trace(
+    const std::string& trace_id,
+    Services& services);
+```
+
+#### Request/Response Types
+
+**MatchPipelineRequest:**
+- `opportunity` or `opportunity_id` (required)
+- `atoms` or `atom_ids` or neither (defaults to all verified)
+- `strategy` (default: kDeterministicLexicalV01)
+- `k_lex`, `k_emb` (hybrid configuration)
+- `trace_id` (optional, auto-generated if not provided)
+
+**MatchPipelineResponse:**
+- `trace_id`
+- `match_report`
+- `validation_report`
+
+**InteractionTransitionRequest:**
+- `interaction_id`
+- `event` (kPrepare, kSend, kReceiveReply, kClose)
+- `idempotency_key`
+- `trace_id` (optional)
+
+**InteractionTransitionResponse:**
+- `trace_id`
+- `result` (outcome, before_state, after_state, transition_index)
+
+### MCP Server
+
+#### Protocol
+
+**JSON-RPC 2.0 over stdio**
+
+- Read requests from stdin (one JSON object per line)
+- Write responses to stdout (one JSON object per line)
+- Write diagnostic messages to stderr
+
+#### Supported Methods
+
+1. **initialize**: Handshake, capability exchange
+2. **tools/list**: Return available tools
+3. **tools/call**: Invoke a tool
+
+#### Supported Tools
+
+1. **match_opportunity**: Run matching + validation pipeline
+2. **validate_match_report**: Validate match report (not yet implemented)
+3. **get_audit_trace**: Fetch audit events by trace_id
+4. **interaction_apply_event**: Apply interaction state transition
+
+See `docs/MCP_SERVER.md` for detailed tool schemas and examples.
+
+### Safety and Constraints
+
+**What the MCP Server Does NOT Do:**
+
+- ❌ No file system access (read/write arbitrary files)
+- ❌ No shell command execution
+- ❌ No network access (except stdin/stdout)
+- ❌ No database mutations beyond what tools explicitly expose
+
+**Least-Privilege Design:**
+
+The server operates on **in-memory services** by default. Future work:
+- Add `--db` flag for SQLite persistence
+- Add `--redis` flag for Redis coordination
+
+### Testing Strategy
+
+#### Unit Tests (app_service layer)
+
+**Files:**
+- `test_app_match_pipeline.cpp` (5 test cases)
+- `test_app_interaction_pipeline.cpp` (5 test cases)
+
+**Coverage:**
+- Match pipeline determinism
+- Validation integration
+- Interaction idempotency
+- Audit trace correctness
+- Error handling (missing opportunity, missing atoms, invalid transitions)
+
+**All tests pass without running MCP server.**
+
+#### Integration Tests (MCP protocol)
+
+**Status:** Not yet implemented (opt-in with `CCMCP_TEST_MCP=1` planned for future).
+
+Manual testing via stdio:
+```bash
+echo '{"jsonrpc":"2.0","id":"1","method":"tools/list","params":{}}' | ./build/apps/mcp_server/mcp_server
+```
+
+### CLI Refactoring
+
+**Before v0.2 Slice 5:** CLI contained inline matching logic.
+
+**After v0.2 Slice 5:** CLI calls `app_service::run_match_pipeline()`.
+
+**Result:**
+- CLI output remains byte-identical to v0.1
+- Business logic is now shared with MCP server
+- No code duplication
+
+### File Layout
+
+```
+include/ccmcp/app/
+└── app_service.h            # Request/response types + public API
+
+src/app/
+└── app_service.cpp          # Business logic implementations
+
+apps/mcp_server/
+├── main.cpp                 # Server loop + tool handlers
+├── mcp_protocol.h           # JSON-RPC helpers (parse, make_response, make_error)
+└── mcp_protocol.cpp
+
+tests/
+├── test_app_match_pipeline.cpp
+└── test_app_interaction_pipeline.cpp
+
+docs/
+└── MCP_SERVER.md            # Comprehensive MCP server documentation
+```
+
+### Future Enhancements (Post-v0.2)
+
+**v0.3: Configuration**
+- Add `--db`, `--redis`, `--vector-backend` CLI flags to MCP server
+- Support config file (JSON/TOML)
+
+**v0.4: Full Tool Support**
+- Implement `validate_match_report` standalone tool
+- Add `create_interaction` tool
+
+**v0.5: Authentication**
+- API key validation
+- User identity propagation to audit log
+
+**v0.6: Streaming**
+- Support streaming responses for long-running operations
+- Progress updates
+
+### Production-Ready Refactor
+
+After initial implementation, the MCP server was refactored to production standards with:
+- **Configuration system** (CLI flags for backend selection)
+- **Registry pattern** (extensible method/tool dispatch)
+- **ServerContext** (clean dependency bundling)
+- **Backend composition** (SQLite + Redis support)
+
+**Result:** ✅ C++ Core Guidelines compliant, production-ready server
+
+**See:** `docs/V0_2_SLICE_5_REFACTOR.md` for detailed refactor documentation
+
+---
+
+## Summary: v0.2 Complete Architecture
+
+| Component              | Implementation   | Purpose                          | Status |
+|------------------------|------------------|----------------------------------|--------|
+| Atoms                  | SQLite           | Canonical persistence            | ✅     |
+| Opportunities          | SQLite           | Canonical persistence            | ✅     |
+| Interactions           | SQLite           | Canonical persistence            | ✅     |
+| Interaction Coordination | Redis          | Atomic state transitions         | ✅     |
+| Audit Events           | SQLite           | Append-only log                  | ✅     |
+| Vector Index           | InMemoryVectorIndex | Testing/development           | ✅     |
+| Embedding Provider     | DeterministicStubEmbeddingProvider | Testing | ✅     |
+| Hybrid Retrieval       | Lexical + Embedding | Recall expansion             | ✅     |
+| In-Memory              | Available        | Testing, development             | ✅     |
+| **app_service Layer**  | **Shared Logic** | **Business logic for CLI + MCP** | **✅** |
+| **MCP Server**         | **JSON-RPC/stdio** | **Tool-based API**             | **✅** |
+
+**Next Steps:**
+- v0.3: Production configuration (persistent backends via CLI flags)
+- v0.4: Advanced MCP tools (streaming, bulk operations)
+- v0.5: Authentication and authorization
