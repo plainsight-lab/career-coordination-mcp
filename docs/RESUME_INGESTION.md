@@ -2,8 +2,50 @@
 
 ## Status
 
-Design specification (v0.2+ target)\
-Not required for v0.1 implementation.
+**v0.3 Implementation**: Core ingestion pipeline with PDF/DOCX/MD/TXT support ✅
+**v0.4+ Target**: Token IR and inference-assisted semantic tokenization (see below)
+
+------------------------------------------------------------------------
+
+## v0.3 Implementation Summary
+
+### What's Implemented
+
+✅ **Multi-format ingestion**: PDF, DOCX, Markdown, TXT
+✅ **Deterministic extraction**: All formats produce canonical markdown
+✅ **Hygiene normalization**: Line endings, whitespace, blank lines, headings
+✅ **SQLite persistence**: Schema v2 with resume and resume_meta tables
+✅ **CLI integration**: `ccmcp_cli ingest-resume <file>`
+✅ **Provenance tracking**: Source hash, resume hash, extraction method, version
+✅ **Comprehensive tests**: 109 passing tests
+
+### Format Adapter Details
+
+| Format | Extraction Method | Implementation | Limitations |
+|--------|------------------|----------------|-------------|
+| **Markdown** | `md-pass-through-v1` | Pass-through | None |
+| **Text** | `txt-wrap-v1` | Wrap in markdown | None |
+| **DOCX** | `docx-extract-v1` | libzip + pugixml<br/>Parse word/document.xml | Text only, no images/tables |
+| **PDF** | `pdf-text-extract-v1` | Custom text stream parser | Basic text-layer PDFs only<br/>No compressed streams<br/>No complex encodings<br/>**Will evaluate Poppler/MuPDF when containerizing** |
+
+### Not Yet Implemented (v0.4+)
+
+❌ Token IR generation (inference-assisted semantic tokenization)
+❌ Token validation rules (TOK-001 through TOK-005)
+❌ Deterministic lexical tokenizer fallback
+❌ Caching and rebuild rules
+❌ Full ingestion audit events
+
+### Rationale for PDF Implementation
+
+The custom PDF parser is a pragmatic v0.3 choice:
+- Works for typical resume PDFs (text-layer exports)
+- Zero dependency overhead
+- Deterministic and testable
+- **Trade-off**: Poppler (industry standard) requires 20+ dependencies and complex build tooling
+- **Decision**: Revisit with Poppler or MuPDF when containerizing (easier dependency management)
+
+See: Section 3.2 below for original design spec.
 
 ------------------------------------------------------------------------
 

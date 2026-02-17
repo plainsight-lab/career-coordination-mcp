@@ -18,6 +18,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Catch2 CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(redis++ CONFIG REQUIRED)
+find_package(libzip CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
 
 add_library(ccmcp
   src/core/hashing.cpp
@@ -43,6 +45,10 @@ add_library(ccmcp
   src/storage/sqlite/sqlite_opportunity_repository.cpp
   src/storage/sqlite/sqlite_interaction_repository.cpp
   src/storage/sqlite/sqlite_audit_log.cpp
+  src/storage/sqlite/sqlite_resume_store.cpp
+  src/ingest/format_adapter.cpp
+  src/ingest/hygiene.cpp
+  src/ingest/resume_ingestor.cpp
   src/embedding/deterministic_stub_embedding_provider.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
@@ -64,6 +70,8 @@ target_link_libraries(ccmcp
     nlohmann_json::nlohmann_json
     unofficial::sqlite3::sqlite3
     redis++::redis++_static
+    libzip::zip
+    pugixml::pugixml
 )
 
 if(MSVC)

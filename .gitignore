@@ -24,3 +24,11 @@ compile_commands.json
 
 # Prompt files
 prompt.md
+
+# Data directories (configurable paths for SQLite, LanceDB, etc.)
+/data/
+*.db
+*.sqlite
+*.sqlite3
+/lancedb_data/
+/vector_index/

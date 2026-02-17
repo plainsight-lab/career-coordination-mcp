@@ -80,6 +80,32 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (1, datetime('now'));
 )";
 
+// Embedded schema v2 SQL (adds resume tables)
+constexpr const char* kSchemaV2 = R"(
+CREATE TABLE IF NOT EXISTS resumes (
+  resume_id TEXT PRIMARY KEY,
+  resume_md TEXT NOT NULL,
+  resume_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_resumes_hash ON resumes(resume_hash);
+
+CREATE TABLE IF NOT EXISTS resume_meta (
+  resume_id TEXT PRIMARY KEY,
+  source_path TEXT,
+  source_hash TEXT NOT NULL,
+  extraction_method TEXT NOT NULL,
+  extracted_at TEXT,
+  ingestion_version TEXT NOT NULL,
+  FOREIGN KEY(resume_id) REFERENCES resumes(resume_id)
+    ON DELETE CASCADE
+);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (2, datetime('now'));
+)";
+
 SqliteDb::SqliteDb(sqlite3* db) : db_(db) {}
 
 core::Result<std::shared_ptr<SqliteDb>, std::string> SqliteDb::open(const std::string& path) {
@@ -136,6 +162,28 @@ core::Result<bool, std::string> SqliteDb::ensure_schema_v1() {
     std::string error = err_msg != nullptr ? err_msg : "Unknown error";
     sqlite3_free(err_msg);
     return core::Result<bool, std::string>::err("Failed to apply schema v1: " + error);
+  }
+
+  return core::Result<bool, std::string>::ok(true);
+}
+
+core::Result<bool, std::string> SqliteDb::ensure_schema_v2() {
+  // Ensure v1 is applied first
+  auto v1_result = ensure_schema_v1();
+  if (!v1_result.has_value()) {
+    return v1_result;
+  }
+
+  if (get_schema_version() >= 2) {
+    return core::Result<bool, std::string>::ok(true);
+  }
+
+  char* err_msg = nullptr;
+  int rc = sqlite3_exec(db_.get(), kSchemaV2, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v2: " + error);
   }
 
   return core::Result<bool, std::string>::ok(true);

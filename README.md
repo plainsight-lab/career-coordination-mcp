@@ -232,22 +232,37 @@ The engine can integrate LLM providers later, but:
 
 ## Roadmap
 
-v0.1
+### v0.1 ✅ Complete
 - Deterministic matcher
 - Constitutional validation scaffolding
 - Audit logging
 - CLI demo
 
-v0.2
+### v0.2 ✅ Complete
 - Hybrid lexical + embedding retrieval
 - SQLite persistence
-- Redis-backed state machine
+- Redis-backed state machine coordination
 - MCP protocol server
 
-v0.3
+### v0.3 Slice 1 ✅ Complete
+- **Resume Ingestion Pipeline**
+  - Multi-format support (PDF, DOCX, MD, TXT)
+  - Deterministic text extraction
+  - Hygiene normalization
+  - SQLite schema v2 with provenance tracking
+  - CLI: `ccmcp_cli ingest-resume`
+- See [RESUME_INGESTION.md](docs/RESUME_INGESTION.md) for details
+
+### v0.3 Slice 2+ (Planned)
+- Token IR generation (inference-assisted semantic tokenization)
 - Structured resume patching
 - Interaction analytics
 - Cross-document reasoning
+
+### v0.4+ (Future)
+- Containerization (will enable Poppler/MuPDF for PDF)
+- Token validation rules
+- Resume composition workflows
 
 ---
 

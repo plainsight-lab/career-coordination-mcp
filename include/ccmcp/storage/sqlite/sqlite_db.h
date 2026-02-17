@@ -43,6 +43,9 @@ class SqliteDb {
   // Apply schema v1 if not already applied
   [[nodiscard]] core::Result<bool, std::string> ensure_schema_v1();
 
+  // Apply schema v2 if not already applied (adds resume tables)
+  [[nodiscard]] core::Result<bool, std::string> ensure_schema_v2();
+
   // Execute SQL statement (for non-query operations)
   [[nodiscard]] core::Result<bool, std::string> exec(const std::string& sql);
 

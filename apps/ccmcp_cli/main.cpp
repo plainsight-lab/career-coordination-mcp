@@ -6,6 +6,7 @@
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
 #include "ccmcp/embedding/embedding_provider.h"
+#include "ccmcp/ingest/resume_ingestor.h"
 #include "ccmcp/matching/matcher.h"
 #include "ccmcp/storage/audit_event.h"
 #include "ccmcp/storage/audit_log.h"
@@ -17,6 +18,7 @@
 #include "ccmcp/storage/sqlite/sqlite_db.h"
 #include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
+#include "ccmcp/storage/sqlite/sqlite_resume_store.h"
 #include "ccmcp/vector/null_embedding_index.h"
 
 #include <nlohmann/json.hpp>
@@ -34,9 +36,10 @@ struct CliConfig {
   std::string vector_backend{"inmemory"};  // "inmemory" or "lancedb"
 };
 
-// Forward declaration
+// Forward declarations
 void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
                    ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy);
+int run_ingest_resume(int argc, char* argv[]);
 
 // Parse command line arguments
 CliConfig parse_cli_args(int argc, char* argv[]) {
@@ -70,6 +73,14 @@ CliConfig parse_cli_args(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+  // Check for subcommands
+  if (argc > 1) {
+    std::string subcommand = argv[1];
+    if (subcommand == "ingest-resume") {
+      return run_ingest_resume(argc, argv);
+    }
+  }
+
   auto config = parse_cli_args(argc, argv);
 
   std::cout << "career-coordination-mcp v0.1\n";
@@ -135,6 +146,83 @@ int main(int argc, char* argv[]) {
     // Run application logic with in-memory services
     run_cli_logic(services, id_gen, clock, config.matching_strategy);
   }
+
+  return 0;
+}
+
+// Ingest resume subcommand implementation
+int run_ingest_resume(int argc, char* argv[]) {
+  // Usage: ccmcp_cli ingest-resume <file-path> [--db <db-path>]
+  if (argc < 3) {
+    std::cerr << "Usage: ccmcp_cli ingest-resume <file-path> [--db <db-path>]\n";
+    return 1;
+  }
+
+  std::string file_path = argv[2];
+  std::optional<std::string> db_path;
+
+  // Parse options
+  for (int i = 3; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--db" && i + 1 < argc) {
+      db_path = argv[++i];
+    }
+  }
+
+  // If no --db specified, use default
+  if (!db_path.has_value()) {
+    db_path = "data/ccmcp.db";
+    std::cout << "No --db specified, using default: " << db_path.value() << "\n";
+  }
+
+  // Open database and ensure schema v2
+  auto db_result = ccmcp::storage::sqlite::SqliteDb::open(db_path.value());
+  if (!db_result.has_value()) {
+    std::cerr << "Failed to open database: " << db_result.error() << "\n";
+    return 1;
+  }
+
+  auto db = db_result.value();
+  auto schema_result = db->ensure_schema_v2();
+  if (!schema_result.has_value()) {
+    std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
+    return 1;
+  }
+
+  // Create ingestor and store
+  auto ingestor = ccmcp::ingest::create_resume_ingestor();
+  ccmcp::storage::sqlite::SqliteResumeStore resume_store(db);
+
+  // Create ID generator and clock (deterministic for reproducibility)
+  ccmcp::core::DeterministicIdGenerator id_gen;
+  ccmcp::core::SystemClock clock;
+
+  // Run ingestion
+  std::cout << "Ingesting resume from: " << file_path << "\n";
+
+  ccmcp::ingest::IngestOptions options;
+  auto result = ingestor->ingest_file(file_path, options, id_gen, clock);
+
+  if (!result.has_value()) {
+    std::cerr << "Ingestion failed: " << result.error() << "\n";
+    return 1;
+  }
+
+  auto ingested_resume = result.value();
+
+  // Store in database
+  resume_store.upsert(ingested_resume);
+
+  // Print result
+  std::cout << "Success!\n";
+  std::cout << "  Resume ID: " << ingested_resume.resume_id.value << "\n";
+  std::cout << "  Resume hash: " << ingested_resume.resume_hash << "\n";
+  std::cout << "  Extraction method: " << ingested_resume.meta.extraction_method << "\n";
+  std::cout << "  Ingestion version: " << ingested_resume.meta.ingestion_version << "\n";
+  if (ingested_resume.meta.source_path.has_value()) {
+    std::cout << "  Source path: " << ingested_resume.meta.source_path.value() << "\n";
+  }
+  std::cout << "  Resume content length: " << ingested_resume.resume_md.size() << " bytes\n";
 
   return 0;
 }
