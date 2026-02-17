@@ -5,6 +5,7 @@ namespace ccmcp::constitution {
 enum class ArtifactType {
   kUnknown,
   kMatchReport,
+  kResumeTokenIR,
 };
 
 // ArtifactView is an abstract interface for typed artifact access.

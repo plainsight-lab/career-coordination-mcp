@@ -32,10 +32,20 @@ add_library(ccmcp
   src/domain/interaction.cpp
   src/domain/resume.cpp
   src/domain/match_report.cpp
+  src/domain/resume_token_ir.cpp
+  src/domain/resume_token_ir_json.cpp
+  src/constitution/token_ir_artifact_view.cpp
   src/constitution/validation_engine.cpp
   src/constitution/rules/schema_001.cpp
   src/constitution/rules/evid_001.cpp
   src/constitution/rules/score_001.cpp
+  src/constitution/rules/tok_001.cpp
+  src/constitution/rules/tok_002.cpp
+  src/constitution/rules/tok_003.cpp
+  src/constitution/rules/tok_004.cpp
+  src/constitution/rules/tok_005.cpp
+  src/tokenization/deterministic_lexical_tokenizer.cpp
+  src/tokenization/stub_inference_tokenizer.cpp
   src/storage/audit_log.cpp
   src/storage/inmemory_atom_repository.cpp
   src/storage/inmemory_opportunity_repository.cpp
@@ -46,6 +56,7 @@ add_library(ccmcp
   src/storage/sqlite/sqlite_interaction_repository.cpp
   src/storage/sqlite/sqlite_audit_log.cpp
   src/storage/sqlite/sqlite_resume_store.cpp
+  src/storage/sqlite/sqlite_resume_token_store.cpp
   src/ingest/format_adapter.cpp
   src/ingest/hygiene.cpp
   src/ingest/resume_ingestor.cpp

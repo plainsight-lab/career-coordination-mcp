@@ -24,6 +24,9 @@ add_executable(ccmcp_tests
   test_sqlite_opportunity_repository.cpp
   test_sqlite_audit_log.cpp
   test_sqlite_resume_store.cpp
+  test_sqlite_resume_token_store.cpp
+  test_tokenization.cpp
+  test_token_ir_validation.cpp
   test_format_adapter.cpp
   test_hygiene.cpp
   test_resume_ingestor.cpp

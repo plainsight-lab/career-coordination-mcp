@@ -19,6 +19,9 @@
 #include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
+#include "ccmcp/storage/sqlite/sqlite_resume_token_store.h"
+#include "ccmcp/tokenization/deterministic_lexical_tokenizer.h"
+#include "ccmcp/tokenization/stub_inference_tokenizer.h"
 #include "ccmcp/vector/null_embedding_index.h"
 
 #include <nlohmann/json.hpp>
@@ -40,6 +43,7 @@ struct CliConfig {
 void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
                    ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy);
 int run_ingest_resume(int argc, char* argv[]);
+int run_tokenize_resume(int argc, char* argv[]);
 
 // Parse command line arguments
 CliConfig parse_cli_args(int argc, char* argv[]) {
@@ -78,6 +82,8 @@ int main(int argc, char* argv[]) {
     std::string subcommand = argv[1];
     if (subcommand == "ingest-resume") {
       return run_ingest_resume(argc, argv);
+    } else if (subcommand == "tokenize-resume") {
+      return run_tokenize_resume(argc, argv);
     }
   }
 
@@ -314,4 +320,110 @@ void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicId
   for (const auto& event : services.audit_log.query(trace_id.value)) {
     std::cout << event.created_at << " [" << event.event_type << "] " << event.payload << "\n";
   }
+}
+
+// Tokenize resume subcommand implementation
+int run_tokenize_resume(int argc, char* argv[]) {
+  // Usage: ccmcp_cli tokenize-resume <resume-id> [--db <db-path>] [--mode
+  // <deterministic|stub-inference>]
+  if (argc < 3) {
+    std::cerr << "Usage: ccmcp_cli tokenize-resume <resume-id> [--db <db-path>] [--mode "
+                 "<deterministic|stub-inference>]\n";
+    return 1;
+  }
+
+  std::string resume_id_str = argv[2];
+  std::optional<std::string> db_path;
+  std::string mode = "deterministic";  // default
+
+  // Parse options
+  for (int i = 3; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--db" && i + 1 < argc) {
+      db_path = argv[++i];
+    } else if (arg == "--mode" && i + 1 < argc) {
+      mode = argv[++i];
+      if (mode != "deterministic" && mode != "stub-inference") {
+        std::cerr << "Invalid --mode: " << mode << " (valid: deterministic, stub-inference)\n";
+        return 1;
+      }
+    }
+  }
+
+  // If no --db specified, use default
+  if (!db_path.has_value()) {
+    db_path = "data/ccmcp.db";
+    std::cout << "No --db specified, using default: " << db_path.value() << "\n";
+  }
+
+  // Open database and ensure schema v3
+  auto db_result = ccmcp::storage::sqlite::SqliteDb::open(db_path.value());
+  if (!db_result.has_value()) {
+    std::cerr << "Failed to open database: " << db_result.error() << "\n";
+    return 1;
+  }
+
+  auto db = db_result.value();
+  auto schema_result = db->ensure_schema_v3();
+  if (!schema_result.has_value()) {
+    std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
+    return 1;
+  }
+
+  // Create stores
+  ccmcp::storage::sqlite::SqliteResumeStore resume_store(db);
+  ccmcp::storage::sqlite::SqliteResumeTokenStore token_store(db);
+
+  // Get resume from database
+  ccmcp::core::ResumeId resume_id{resume_id_str};
+  auto resume_opt = resume_store.get(resume_id);
+  if (!resume_opt.has_value()) {
+    std::cerr << "Resume not found: " << resume_id_str << "\n";
+    return 1;
+  }
+
+  auto resume = resume_opt.value();
+
+  // Create tokenizer based on mode
+  std::unique_ptr<ccmcp::tokenization::ITokenizationProvider> tokenizer;
+  if (mode == "deterministic") {
+    tokenizer = std::make_unique<ccmcp::tokenization::DeterministicLexicalTokenizer>();
+    std::cout << "Using deterministic lexical tokenizer\n";
+  } else {
+    tokenizer = std::make_unique<ccmcp::tokenization::StubInferenceTokenizer>();
+    std::cout << "Using stub inference tokenizer\n";
+  }
+
+  // Tokenize
+  std::cout << "Tokenizing resume: " << resume_id_str << "\n";
+  auto token_ir = tokenizer->tokenize(resume.resume_md, resume.resume_hash);
+
+  // Generate token_ir_id (resume_id + tokenizer type)
+  std::string token_ir_id =
+      resume_id_str + "-" + ccmcp::domain::tokenizer_type_to_string(token_ir.tokenizer.type);
+
+  // Store token IR
+  token_store.upsert(token_ir_id, resume_id, token_ir);
+
+  // Print result
+  std::cout << "Success!\n";
+  std::cout << "  Token IR ID: " << token_ir_id << "\n";
+  std::cout << "  Source hash: " << token_ir.source_hash << "\n";
+  std::cout << "  Tokenizer type: "
+            << ccmcp::domain::tokenizer_type_to_string(token_ir.tokenizer.type) << "\n";
+  if (token_ir.tokenizer.model_id.has_value()) {
+    std::cout << "  Model ID: " << token_ir.tokenizer.model_id.value() << "\n";
+  }
+
+  // Count tokens by category
+  size_t total_tokens = 0;
+  std::cout << "  Token counts by category:\n";
+  for (const auto& [category, tokens] : token_ir.tokens) {
+    std::cout << "    " << category << ": " << tokens.size() << "\n";
+    total_tokens += tokens.size();
+  }
+  std::cout << "  Total tokens: " << total_tokens << "\n";
+  std::cout << "  Spans: " << token_ir.spans.size() << "\n";
+
+  return 0;
 }

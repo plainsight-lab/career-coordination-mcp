@@ -131,13 +131,179 @@ For each `RequirementMatch` where `matched == true`:
 
 ---
 
+## v0.3 Token IR Rules
+
+### TOK-001 (BLOCK)
+
+**Purpose:** Ensure Token IR provenance binding
+
+**Severity:** BLOCK (validation fails immediately)
+
+**Conditions Checked:**
+
+- `source_hash` in Token IR must match canonical resume hash
+
+**Violation Behavior:**
+
+- Emit Finding with severity `BLOCK`
+- Validation status: `BLOCKED`
+- Prevents tokens from mismatched or unknown sources
+
+**Rationale:** Provenance binding prevents token IR from being applied to wrong resume or orphaned tokens.
+
+---
+
+### TOK-002 (FAIL)
+
+**Purpose:** Ensure token format constraints
+
+**Severity:** FAIL (validation fails but does not block)
+
+**Conditions Checked:**
+
+For each token in all categories:
+
+1. Token must be lowercase ASCII only (a-z, 0-9)
+2. Token length must be >= 2 characters
+3. No special characters or whitespace
+
+**Violation Behavior:**
+
+- Emit Finding with severity `FAIL` for each violating token
+- Validation status: `REJECTED`
+- Artifact is rejected
+
+**Rationale:** Enforces deterministic tokenization format for matching and retrieval.
+
+**Example Violation:**
+
+```json
+{
+  "tokens": {
+    "skills": ["C++", "python"]  // ❌ VIOLATION: "C++" contains uppercase and special chars
+  }
+}
+```
+
+---
+
+### TOK-003 (FAIL)
+
+**Purpose:** Ensure token span bounds
+
+**Severity:** FAIL (validation fails but does not block)
+
+**Conditions Checked:**
+
+For each `TokenSpan`:
+
+1. `start_line >= 1`
+2. `end_line >= 1`
+3. `start_line <= end_line`
+4. `end_line <= canonical resume line count` (if canonical text available)
+
+**Violation Behavior:**
+
+- Emit Finding with severity `FAIL` for each invalid span
+- Validation status: `REJECTED`
+
+**Rationale:** Prevents invalid line references that break source tracing.
+
+**Example Violation:**
+
+```json
+{
+  "spans": [
+    {"token": "python", "start_line": 5, "end_line": 3}  // ❌ start > end
+  ]
+}
+```
+
+---
+
+### TOK-004 (FAIL)
+
+**Purpose:** Prevent hallucinated tokens (anti-hallucination gate)
+
+**Severity:** FAIL (validation fails but does not block)
+
+**Conditions Checked:**
+
+For each token in all categories:
+
+- Token must appear in canonical resume markdown **OR**
+- Token must be derivable via `core::tokenize_ascii(canonical_resume_text)`
+
+**Violation Behavior:**
+
+- Emit Finding with severity `FAIL` for each hallucinated token
+- Validation status: `REJECTED`
+- Prevents LLM hallucinations from propagating
+
+**Rationale:** Critical anti-hallucination gate. Ensures all tokens are grounded in actual resume content, not invented by inference models.
+
+**Example Violation:**
+
+```json
+{
+  "tokens": {
+    "skills": ["cpp", "kubernetes"]  // ❌ "kubernetes" not in resume
+  }
+}
+// Canonical resume: "Software Engineer with C++ experience"
+// Derivable tokens: ["software", "engineer", "with", "cpp", "experience"]
+```
+
+**Note:** This rule is the **primary defense** against LLM hallucinations in inference-assisted tokenization.
+
+---
+
+### TOK-005 (WARN)
+
+**Purpose:** Warn on excessive tokenization
+
+**Severity:** WARN (informational, does not fail validation)
+
+**Conditions Checked:**
+
+1. Total token count across all categories <= 500
+2. Per-category token count <= 200
+
+**Violation Behavior:**
+
+- Emit Finding with severity `WARN`
+- Validation status: `NEEDS_REVIEW` (if no BLOCK or FAIL)
+- Artifact is accepted but flagged
+
+**Rationale:** Excessive tokenization may indicate quality issues (over-extraction, noise).
+
+**Example Warning:**
+
+```json
+{
+  "tokens": {
+    "skills": [/* 250 tokens */]  // ⚠️ WARNING: Exceeds per-category threshold
+  }
+}
+```
+
+---
+
 ## Rule Evaluation Order
 
 Rules are evaluated in **fixed, deterministic order**:
 
+### MatchReport Rules (v0.1):
 1. **SCHEMA-001** (structural integrity)
 2. **EVID-001** (evidence attribution)
 3. **SCORE-001** (degenerate scoring)
+
+### Token IR Rules (v0.3):
+1. **TOK-001** (provenance binding)
+2. **TOK-002** (format constraints)
+3. **TOK-003** (span bounds)
+4. **TOK-004** (anti-hallucination)
+5. **TOK-005** (volume thresholds)
 
 This order ensures:
 - Structural checks happen first (fail fast)
@@ -201,10 +367,17 @@ WARN:  SCORE-001  - "All requirement scores are zero."
 **Rule Definitions:** `src/constitution/validation_engine.cpp`
 
 **Test Coverage:**
+
+*MatchReport Rules (v0.1):*
 - `test_validation_schema_block.cpp` - SCHEMA-001 violations
 - `test_validation_evidence_fail.cpp` - EVID-001 violations
 - `test_validation_warn.cpp` - SCORE-001 warnings
 - `test_validation_pass.cpp` - Valid reports and deterministic sorting
+
+*Token IR Rules (v0.3):*
+- `test_token_ir_validation.cpp` - TOK-001 through TOK-005 validation
+- `test_tokenization.cpp` - Tokenization stability and determinism
+- `test_sqlite_resume_token_store.cpp` - SQLite persistence and round-trip
 
 **Guarantees:**
 
@@ -229,4 +402,5 @@ Future versions may add optional rules but must not break v0.1 invariants withou
 
 ## Version History
 
+- **v0.3** (2026-02-17): Added Token IR rules (TOK-001 through TOK-005)
 - **v0.1** (2026-02-14): Initial rule set (SCHEMA-001, EVID-001, SCORE-001)
