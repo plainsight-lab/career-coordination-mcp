@@ -128,27 +128,47 @@ No artifact is accepted without validation.
 ```text
 career-coordination-mcp/
 ├── include/ccmcp/
-│   ├── core/              # IDs, Result<T>, utilities
-│   ├── domain/            # Atoms, Opportunities, Contacts, Resume
+│   ├── app/               # Pipeline orchestration (app_service)
 │   ├── constitution/      # Rules, ValidationEngine, Findings
-│   ├── storage/           # Audit log interfaces
-│   └── matching/          # Scoring + matcher stubs
-├── src/                   # Implementations
-├── apps/ccmcp_cli/        # Minimal CLI reference app
-├── tests/                 # Unit tests
-└── docs/                  # Architecture and governance specs
+│   ├── core/              # IDs, Result<T>, hashing, utilities
+│   ├── domain/            # Atoms, Opportunities, Interactions
+│   ├── embedding/         # IEmbeddingProvider + stub implementations
+│   ├── indexing/          # IIndexRunStore, IndexBuildPipeline, drift detection
+│   ├── ingest/            # IResumeIngestor, IResumeStore, IngestedResume
+│   ├── interaction/       # IInteractionCoordinator, FSM, Redis coordinator
+│   ├── matching/          # Lexical + hybrid retrieval, scoring
+│   ├── storage/           # IAuditLog, IAtomRepository, IOpportunityRepository
+│   │   └── sqlite/        # SqliteDb, all SQLite implementations
+│   ├── tokenization/      # Token IR, semantic tokenizer
+│   └── vector/            # IEmbeddingIndex, InMemory + SQLite implementations
+├── src/                   # All library implementations
+├── apps/
+│   ├── shared/            # Shared arg_parser template (used by both apps)
+│   ├── ccmcp_cli/         # CLI reference app
+│   │   └── commands/      # ingest-resume, tokenize-resume, index-build, match
+│   └── mcp_server/        # MCP JSON-RPC server
+│       └── handlers/      # Per-tool handler implementations
+├── tests/                 # 163 deterministic unit tests
+└── docs/                  # Architecture, governance, and design specs
 ```
 
-## Current Scope (v0.1)
+## Current Scope (v0.3 — Complete)
 
-- Domain model scaffolding
-- Deterministic matching stub
-- Constitutional validation engine structure
-- In-memory audit log
-- CLI demonstration
-- SQLite/Redis/LanceDB deferred to later versions
+All v0.3 slices are implemented and passing. See [Roadmap](#roadmap) below for full details.
 
-Embeddings and advanced semantic matching are planned for v0.2+ but not required for v0.1.
+**Implemented capabilities:**
+- Deterministic lexical + hybrid (lexical + embedding) matching
+- Constitutional validation engine with rule packs and machine-readable reports
+- Append-only audit log with full trace retrieval
+- Outreach interaction state machine (FSM) with idempotent transitions
+- SQLite persistence for atoms, opportunities, interactions, audit log, resumes, and index runs
+- Redis-backed interaction coordination
+- Resume ingestion pipeline (Markdown, TXT, DOCX stub, PDF stub) with hygiene normalization
+- Token IR generation with constitutional validation
+- SQLite-backed embedding vector index with persistent storage
+- Embedding lifecycle: deterministic index build/rebuild with drift detection (source hash comparison)
+- MCP server exposing all tools with persistent backend wiring
+- CLI commands: `ingest-resume`, `tokenize-resume`, `index-build`, `match`
 
 ---
 
@@ -196,6 +216,7 @@ Dependencies (resolved automatically via vcpkg.json):
 - nlohmann-json (JSON serialization)
 - fmt (formatting)
 - Catch2 (testing)
+- sqlite3 (persistence layer)
 
 ### Code Quality
 
@@ -240,29 +261,60 @@ The engine can integrate LLM providers later, but:
 
 ### v0.2 ✅ Complete
 - Hybrid lexical + embedding retrieval
-- SQLite persistence
-- Redis-backed state machine coordination
-- MCP protocol server
+- SQLite persistence (atoms, opportunities, interactions, audit log)
+- Redis-backed interaction state machine coordination
+- MCP protocol server with app_service layer
 
-### v0.3 Slice 1 ✅ Complete
-- **Resume Ingestion Pipeline**
-  - Multi-format support (PDF, DOCX, MD, TXT)
-  - Deterministic text extraction
-  - Hygiene normalization
-  - SQLite schema v2 with provenance tracking
-  - CLI: `ccmcp_cli ingest-resume`
-- See [RESUME_INGESTION.md](docs/RESUME_INGESTION.md) for details
+### v0.3 ✅ Complete (5 slices + CLI refactor)
 
-### v0.3 Slice 2+ (Planned)
-- Token IR generation (inference-assisted semantic tokenization)
-- Structured resume patching
-- Interaction analytics
-- Cross-document reasoning
+**Slice 1 — Resume Ingestion Pipeline**
+- Multi-format ingestion (Markdown, TXT; DOCX and PDF stubs)
+- Deterministic text extraction and hygiene normalization
+- SQLite schema v2 (resumes + resume_meta tables)
+- CLI: `ccmcp_cli ingest-resume`
+- See [RESUME_INGESTION.md](docs/RESUME_INGESTION.md)
+
+**Slice 2 — Token IR Generation**
+- Semantic token extraction from ingested resumes
+- Constitutional validation of token IR (no ungrounded claims)
+- SQLite schema v3 (resume_tokens table)
+- CLI: `ccmcp_cli tokenize-resume`
+- See [TOKEN_IR.md](docs/TOKEN_IR.md)
+
+**Slice 3 — SQLite-backed Persistent Vector Index**
+- `SqliteEmbeddingIndex`: upsert, similarity search, persistent storage
+- Replaces ephemeral in-memory-only vector index for production use
+- See [VECTORDB_BACKEND.md](docs/VECTORDB_BACKEND.md)
+
+**Slice 4 — Embedding Lifecycle + Index Build/Rebuild**
+- SQLite schema v4 (index_runs + index_entries tables)
+- `IIndexRunStore` + `SqliteIndexRunStore` for provenance tracking
+- `run_index_build()` pipeline with per-artifact drift detection (source hash comparison)
+- Deterministic index rebuild: skip unchanged, reindex stale
+- CLI: `ccmcp_cli index-build`
+- Audit events: `IndexRunStarted`, `IndexedArtifact`, `IndexRunCompleted`
+- See [INDEXING.md](docs/INDEXING.md)
+
+**CLI Hardening Refactor**
+- Shared `arg_parser` template extracted to `apps/shared/`
+- CLI decomposed from monolithic 557-line main into command table dispatch + per-command files
+
+**Slice 5 — MCP Server Hardening + Persistence Wiring**
+- All six backends wired in `main.cpp`: SQLite stores, Redis coordinator, LanceDB vector index
+- Config flags: `--db`, `--redis`, `--vector-backend inmemory|lancedb`, `--lancedb-path`, `--matching-strategy`
+- Two new MCP tools: `ingest_resume`, `index_build`
+- `match_opportunity` gains optional `resume_id` for audit traceability
+- `ServerContext` extended with `IResumeIngestor`, `IResumeStore`, `IIndexRunStore`
+- Ephemeral fallback: all subsystems announce WARNING on stderr when not persistent
+- See [MCP_SERVER.md](docs/MCP_SERVER.md)
 
 ### v0.4+ (Future)
-- Containerization (will enable Poppler/MuPDF for PDF)
-- Token validation rules
-- Resume composition workflows
+- Containerization (enables Poppler/MuPDF for real PDF extraction)
+- Resume composition workflows (atom selection → draft → validation → output)
+- Structured resume patching (constitutional diff and patch operations)
+- Real LanceDB C++ SDK integration (currently implemented via `SqliteEmbeddingIndex`)
+- Token validation rule packs
+- Real embedding provider integration (OpenAI, local models)
 
 ---
 
