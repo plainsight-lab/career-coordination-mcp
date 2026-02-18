@@ -20,6 +20,7 @@ add_executable(ccmcp_tests
   test_redis_interaction_coordinator.cpp
   test_null_embedding_index.cpp
   test_inmemory_embedding_index.cpp
+  test_sqlite_embedding_index.cpp
   test_sqlite_atom_repository.cpp
   test_sqlite_opportunity_repository.cpp
   test_sqlite_audit_log.cpp

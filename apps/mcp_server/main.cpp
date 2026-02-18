@@ -16,12 +16,14 @@
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
 #include "ccmcp/vector/inmemory_embedding_index.h"
 #include "ccmcp/vector/null_embedding_index.h"
+#include "ccmcp/vector/sqlite_embedding_index.h"
 
 #include <nlohmann/json.hpp>
 
 #include "config.h"
 #include "server_context.h"
 #include "server_loop.h"
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -38,22 +40,65 @@ using namespace ccmcp;
 int main(int argc, char* argv[]) {
   auto config = mcp::parse_args(argc, argv);
 
-  std::cerr << "career-coordination-mcp MCP Server v0.2\n";
-  if (config.db_path.has_value()) {
-    std::cerr << "Using SQLite database: " << config.db_path.value() << "\n";
-  } else {
-    std::cerr << "Using in-memory storage (no persistence)\n";
-  }
-  if (config.redis_uri.has_value()) {
-    std::cerr << "Using Redis coordinator: " << config.redis_uri.value() << "\n";
-  }
-  std::cerr << "Listening on stdio for JSON-RPC requests...\n";
-
-  // Check for incompatible configuration
-  if (config.vector_backend == "lancedb") {
-    std::cerr << "Error: LanceDB backend not yet implemented in v0.2\n";
+  // Validate config before emitting any startup output so no partial messages appear on error.
+  if (config.vector_backend == "sqlite" && !config.vector_db_path.has_value()) {
+    std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
     return 1;
   }
+
+  // ── Startup diagnostic block ──────────────────────────────────────────────
+  // Every subsystem announces its operational mode. Ephemeral fallbacks are
+  // logged as explicit WARNINGs — not quiet notices — because data loss on a
+  // production server must be impossible to miss in operator logs.
+  std::cerr << "career-coordination-mcp MCP Server v0.2\n";
+
+  if (config.db_path.has_value()) {
+    std::cerr << "Storage:     SQLite -- " << config.db_path.value() << "\n";
+  } else {
+    std::cerr << "WARNING: No --db path specified. Running with EPHEMERAL in-memory storage.\n"
+                 "         All career data (atoms, opportunities, interactions, audit log)\n"
+                 "         will be LOST on process exit. Pass --db <path> to enable persistence.\n";
+  }
+
+  if (config.redis_uri.has_value()) {
+    std::cerr << "Coordinator: Redis -- " << config.redis_uri.value() << "\n";
+  } else {
+    std::cerr << "WARNING: No --redis URI specified. Running with EPHEMERAL in-memory interaction "
+                 "coordinator.\n"
+                 "         Interaction state will NOT survive process restart.\n"
+                 "         Pass --redis <uri> to enable durable coordination.\n";
+  }
+
+  if (config.vector_backend == "sqlite") {
+    std::cerr << "Vector:      SQLite -- " << config.vector_db_path.value() << "/vectors.db\n";
+  } else {
+    std::cerr
+        << "WARNING: No --vector-backend sqlite specified. Running with EPHEMERAL in-memory vector "
+           "index.\n"
+           "         Embedding index will be LOST on process exit. Hybrid matching will require\n"
+           "         re-embedding on restart. Pass --vector-backend sqlite --vector-db-path "
+           "<dir>.\n";
+  }
+
+  std::cerr << "Listening on stdio for JSON-RPC requests...\n";
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Construct the vector index. The sqlite path was validated above.
+  std::unique_ptr<vector::IEmbeddingIndex> vector_index_owner;
+  if (config.vector_backend == "sqlite") {
+    const std::string& dir = config.vector_db_path.value();
+    std::filesystem::create_directories(dir);
+    const std::string db_file = dir + "/vectors.db";
+    try {
+      vector_index_owner = std::make_unique<vector::SqliteEmbeddingIndex>(db_file);
+    } catch (const std::exception& e) {
+      std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
+      return 1;
+    }
+  } else {
+    vector_index_owner = std::make_unique<vector::InMemoryEmbeddingIndex>();
+  }
+  vector::IEmbeddingIndex& vector_index = *vector_index_owner;
 
   // Inject deterministic generators for reproducible behavior
   core::DeterministicIdGenerator id_gen;
@@ -81,8 +126,6 @@ int main(int argc, char* argv[]) {
     storage::sqlite::SqliteInteractionRepository interaction_repo(db);
     storage::sqlite::SqliteAuditLog audit_log(db);
 
-    // Vector index and embedding provider (in-memory for now)
-    vector::InMemoryEmbeddingIndex vector_index;
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
     core::Services services{atom_repo, opportunity_repo, interaction_repo,
@@ -111,8 +154,6 @@ int main(int argc, char* argv[]) {
     storage::InMemoryInteractionRepository interaction_repo;
     storage::InMemoryAuditLog audit_log;
 
-    // Vector index based on config
-    vector::InMemoryEmbeddingIndex vector_index;
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
     core::Services services{atom_repo, opportunity_repo, interaction_repo,

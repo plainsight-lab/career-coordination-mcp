@@ -22,10 +22,13 @@
 #include "ccmcp/storage/sqlite/sqlite_resume_token_store.h"
 #include "ccmcp/tokenization/deterministic_lexical_tokenizer.h"
 #include "ccmcp/tokenization/stub_inference_tokenizer.h"
+#include "ccmcp/vector/inmemory_embedding_index.h"
 #include "ccmcp/vector/null_embedding_index.h"
+#include "ccmcp/vector/sqlite_embedding_index.h"
 
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -36,7 +39,8 @@ struct CliConfig {
   std::optional<std::string> db_path;
   ccmcp::matching::MatchingStrategy matching_strategy{
       ccmcp::matching::MatchingStrategy::kDeterministicLexicalV01};
-  std::string vector_backend{"inmemory"};  // "inmemory" or "lancedb"
+  std::string vector_backend{"inmemory"};     // "inmemory" or "sqlite"
+  std::optional<std::string> vector_db_path;  // required when vector_backend == "sqlite"
 };
 
 // Forward declarations
@@ -65,11 +69,13 @@ CliConfig parse_cli_args(int argc, char* argv[]) {
       }
     } else if (arg == "--vector-backend" && i + 1 < argc) {
       std::string backend = argv[++i];
-      if (backend == "inmemory" || backend == "lancedb") {
+      if (backend == "inmemory" || backend == "sqlite") {
         config.vector_backend = backend;
       } else {
-        std::cerr << "Invalid --vector-backend: " << backend << " (valid: inmemory, lancedb)\n";
+        std::cerr << "Invalid --vector-backend: " << backend << " (valid: inmemory, sqlite)\n";
       }
+    } else if (arg == "--vector-db-path" && i + 1 < argc) {
+      config.vector_db_path = argv[++i];
     }
   }
 
@@ -98,11 +104,28 @@ int main(int argc, char* argv[]) {
     std::cout << "Vector backend: " << config.vector_backend << "\n";
   }
 
-  // Check for incompatible configuration
-  if (config.vector_backend == "lancedb") {
-    std::cerr << "Error: LanceDB backend not yet implemented in v0.2\n";
+  // Validate and construct the vector index before any other initialization.
+  if (config.vector_backend == "sqlite" && !config.vector_db_path.has_value()) {
+    std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
     return 1;
   }
+
+  std::unique_ptr<ccmcp::vector::IEmbeddingIndex> vector_index_owner;
+  if (config.vector_backend == "sqlite") {
+    const std::string& dir = config.vector_db_path.value();
+    std::filesystem::create_directories(dir);
+    const std::string db_file = dir + "/vectors.db";
+    try {
+      vector_index_owner = std::make_unique<ccmcp::vector::SqliteEmbeddingIndex>(db_file);
+      std::cout << "Using SQLite-backed vector index: " << db_file << "\n";
+    } catch (const std::exception& e) {
+      std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
+      return 1;
+    }
+  } else {
+    vector_index_owner = std::make_unique<ccmcp::vector::NullEmbeddingIndex>();
+  }
+  ccmcp::vector::IEmbeddingIndex& vector_index = *vector_index_owner;
 
   // Inject deterministic generators for reproducible demo output
   ccmcp::core::DeterministicIdGenerator id_gen;
@@ -129,7 +152,6 @@ int main(int argc, char* argv[]) {
     ccmcp::storage::sqlite::SqliteOpportunityRepository opportunity_repo(db);
     ccmcp::storage::sqlite::SqliteInteractionRepository interaction_repo(db);
     ccmcp::storage::sqlite::SqliteAuditLog audit_log(db);
-    ccmcp::vector::NullEmbeddingIndex vector_index;
     ccmcp::embedding::NullEmbeddingProvider embedding_provider;
 
     ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,
@@ -143,7 +165,6 @@ int main(int argc, char* argv[]) {
     ccmcp::storage::InMemoryOpportunityRepository opportunity_repo;
     ccmcp::storage::InMemoryInteractionRepository interaction_repo;
     ccmcp::storage::InMemoryAuditLog audit_log;
-    ccmcp::vector::NullEmbeddingIndex vector_index;
     ccmcp::embedding::NullEmbeddingProvider embedding_provider;
 
     ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,

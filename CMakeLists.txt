@@ -64,6 +64,7 @@ add_library(ccmcp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
   src/vector/lancedb_embedding_index.cpp
+  src/vector/sqlite_embedding_index.cpp
   src/interaction/inmemory_interaction_coordinator.cpp
   src/interaction/redis_interaction_coordinator.cpp
   src/matching/matcher.cpp
