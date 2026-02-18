@@ -74,6 +74,41 @@ json handle_tools_list(const JsonRpcRequest& /*req*/, ServerContext& /*ctx*/) {
        }},
   });
 
+  tools.push_back({
+      {"name", "ingest_resume"},
+      {"description", "Ingest a resume file and optionally persist it to the resume store"},
+      {"inputSchema",
+       {
+           {"type", "object"},
+           {"properties",
+            {
+                {"input_path",
+                 {{"type", "string"}, {"description", "Absolute path to resume file"}}},
+                {"persist",
+                 {{"type", "boolean"}, {"description", "Store the resume (default: true)"}}},
+                {"trace_id", {{"type", "string"}}},
+            }},
+           {"required", json::array({"input_path"})},
+       }},
+  });
+
+  tools.push_back({
+      {"name", "index_build"},
+      {"description", "Build or rebuild the embedding vector index for the specified scope"},
+      {"inputSchema",
+       {
+           {"type", "object"},
+           {"properties",
+            {
+                {"scope",
+                 {{"type", "string"},
+                  {"enum", json::array({"atoms", "resumes", "opps", "all"})},
+                  {"description", "Which artifact types to index (default: all)"}}},
+                {"trace_id", {{"type", "string"}}},
+            }},
+       }},
+  });
+
   return json{{"tools", tools}};
 }
 

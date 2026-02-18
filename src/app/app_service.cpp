@@ -3,6 +3,9 @@
 #include "ccmcp/constitution/match_report_view.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
+#include "ccmcp/core/hashing.h"
+#include "ccmcp/indexing/index_build_pipeline.h"
+#include "ccmcp/ingest/ingest_result.h"
 
 #include <stdexcept>
 
@@ -13,13 +16,16 @@ MatchPipelineResponse run_match_pipeline(const MatchPipelineRequest& req, core::
   // Generate or use provided trace_id
   const std::string trace_id = req.trace_id.value_or(core::TraceId{id_gen.next("trace")}.value);
 
-  // Emit RunStarted event
-  services.audit_log.append({id_gen.next("evt"),
-                             trace_id,
-                             "RunStarted",
-                             R"({"source":"app_service","operation":"match_pipeline"})",
-                             clock.now_iso8601(),
-                             {}});
+  // Emit RunStarted event — include resume_id for traceability when provided
+  const std::string resume_context =
+      req.resume_id.has_value() ? R"(,"resume_id":")" + req.resume_id.value().value + "\"" : "";
+  services.audit_log.append(
+      {id_gen.next("evt"),
+       trace_id,
+       "RunStarted",
+       R"({"source":"app_service","operation":"match_pipeline")" + resume_context + "}",
+       clock.now_iso8601(),
+       {}});
 
   // Resolve opportunity
   domain::Opportunity opportunity;
@@ -206,6 +212,92 @@ InteractionTransitionResponse run_interaction_transition(
 std::vector<storage::AuditEvent> fetch_audit_trace(const std::string& trace_id,
                                                    core::Services& services) {
   return services.audit_log.query(trace_id);
+}
+
+IngestResumePipelineResponse run_ingest_resume_pipeline(const IngestResumePipelineRequest& req,
+                                                        ingest::IResumeIngestor& ingestor,
+                                                        ingest::IResumeStore& resume_store,
+                                                        core::Services& services,
+                                                        core::IIdGenerator& id_gen,
+                                                        core::IClock& clock) {
+  const std::string trace_id = req.trace_id.value_or(core::TraceId{id_gen.next("trace")}.value);
+
+  services.audit_log.append({id_gen.next("evt"),
+                             trace_id,
+                             "IngestStarted",
+                             R"({"source":"app_service","operation":"ingest_resume","persist":)" +
+                                 std::string(req.persist ? "true" : "false") + "}",
+                             clock.now_iso8601(),
+                             {}});
+
+  ingest::IngestOptions options;
+  auto result = ingestor.ingest_file(req.input_path, options, id_gen, clock);
+  if (!result.has_value()) {
+    throw std::runtime_error("Ingestion failed: " + result.error());
+  }
+
+  const auto& resume = result.value();
+  const std::string source_hash = core::stable_hash64_hex(resume.resume_md);
+
+  if (req.persist) {
+    resume_store.upsert(resume);
+  }
+
+  services.audit_log.append({id_gen.next("evt"),
+                             trace_id,
+                             "IngestCompleted",
+                             R"({"resume_id":")" + resume.resume_id.value + R"(","resume_hash":")" +
+                                 resume.resume_hash + R"(","source_hash":")" + source_hash +
+                                 R"(","persisted":)" + std::string(req.persist ? "true" : "false") +
+                                 "}",
+                             clock.now_iso8601(),
+                             {resume.resume_id.value}});
+
+  return IngestResumePipelineResponse{
+      .resume_id = resume.resume_id.value,
+      .resume_hash = resume.resume_hash,
+      .source_hash = source_hash,
+      .trace_id = trace_id,
+  };
+}
+
+IndexBuildPipelineResponse run_index_build_pipeline(
+    const IndexBuildPipelineRequest& req, ingest::IResumeStore& resume_store,
+    indexing::IIndexRunStore& index_run_store, core::Services& services,
+    const std::string& provider_id, core::IIdGenerator& id_gen, core::IClock& clock) {
+  const std::string trace_id = req.trace_id.value_or(core::TraceId{id_gen.next("trace")}.value);
+
+  services.audit_log.append(
+      {id_gen.next("evt"),
+       trace_id,
+       "IndexBuildStarted",
+       R"({"source":"app_service","operation":"index_build","scope":")" + req.scope + "\"}",
+       clock.now_iso8601(),
+       {}});
+
+  const indexing::IndexBuildConfig build_config{req.scope, provider_id, "", ""};
+  const auto result =
+      indexing::run_index_build(services.atoms, resume_store, services.opportunities,
+                                index_run_store, services.vector_index, services.embedding_provider,
+                                services.audit_log, id_gen, clock, build_config);
+
+  services.audit_log.append({id_gen.next("evt"),
+                             trace_id,
+                             "IndexBuildCompleted",
+                             R"({"run_id":")" + result.run_id + R"(","indexed":)" +
+                                 std::to_string(result.indexed_count) + R"(,"skipped":)" +
+                                 std::to_string(result.skipped_count) + R"(,"stale":)" +
+                                 std::to_string(result.stale_count) + "}",
+                             clock.now_iso8601(),
+                             {}});
+
+  return IndexBuildPipelineResponse{
+      .run_id = result.run_id,
+      .indexed_count = result.indexed_count,
+      .skipped_count = result.skipped_count,
+      .stale_count = result.stale_count,
+      .trace_id = trace_id,
+  };
 }
 
 }  // namespace ccmcp::app

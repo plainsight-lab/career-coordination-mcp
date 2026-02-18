@@ -9,6 +9,8 @@ add_executable(mcp_server
   handlers/get_audit_trace.cpp
   handlers/interaction_apply_event.cpp
   handlers/tool_registry.cpp
+  handlers/ingest_resume.cpp
+  handlers/index_build.cpp
 )
 
 target_link_libraries(mcp_server

@@ -24,16 +24,16 @@ bool handle_redis(McpServerConfig& config, const std::string& value) {
 }
 
 bool handle_vector_backend(McpServerConfig& config, const std::string& value) {
-  if (value == "inmemory" || value == "sqlite") {
+  if (value == "inmemory" || value == "lancedb") {
     config.vector_backend = value;
     return true;
   }
-  std::cerr << "Invalid --vector-backend: " << value << " (valid: inmemory, sqlite)\n";
+  std::cerr << "Invalid --vector-backend: " << value << " (valid: inmemory, lancedb)\n";
   return false;
 }
 
-bool handle_vector_db_path(McpServerConfig& config, const std::string& value) {
-  config.vector_db_path = value;
+bool handle_lancedb_path(McpServerConfig& config, const std::string& value) {
+  config.lancedb_path = value;
   return true;
 }
 
@@ -58,10 +58,10 @@ std::vector<apps::Option<McpServerConfig>> build_option_registry() {
   return {
       {"--db", true, "Path to SQLite database file", handle_db},
       {"--redis", true, "Redis URI for interaction coordination", handle_redis},
-      {"--vector-backend", true, "Vector backend (inmemory|sqlite)", handle_vector_backend},
-      {"--vector-db-path", true,
-       "Directory for SQLite-backed vector index (required with --vector-backend sqlite)",
-       handle_vector_db_path},
+      {"--vector-backend", true, "Vector backend (inmemory|lancedb)", handle_vector_backend},
+      {"--lancedb-path", true,
+       "Directory for LanceDB vector index (required with --vector-backend lancedb)",
+       handle_lancedb_path},
       {"--matching-strategy", true, "Matching strategy (lexical|hybrid)", handle_matching_strategy},
   };
 }

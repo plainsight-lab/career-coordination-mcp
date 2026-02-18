@@ -9,6 +9,9 @@
 #include "ccmcp/domain/interaction.h"
 #include "ccmcp/domain/match_report.h"
 #include "ccmcp/domain/opportunity.h"
+#include "ccmcp/indexing/index_run_store.h"
+#include "ccmcp/ingest/resume_ingestor.h"
+#include "ccmcp/ingest/resume_store.h"
 #include "ccmcp/interaction/interaction_coordinator.h"
 #include "ccmcp/matching/matcher.h"
 #include "ccmcp/storage/audit_event.h"
@@ -42,6 +45,9 @@ struct MatchPipelineRequest {
 
   // Optional trace_id (if not provided, will be generated)
   std::optional<std::string> trace_id;  // NOLINT(readability-identifier-naming)
+
+  // Optional resume context (for audit trail traceability only — does not alter matching)
+  std::optional<core::ResumeId> resume_id;  // NOLINT(readability-identifier-naming)
 };
 
 struct MatchPipelineResponse {
@@ -98,5 +104,56 @@ struct InteractionTransitionResponse {
 // Fetch all audit events for a given trace_id
 [[nodiscard]] std::vector<storage::AuditEvent> fetch_audit_trace(const std::string& trace_id,
                                                                  core::Services& services);
+
+// ────────────────────────────────────────────────────────────────
+// Ingest Resume Pipeline
+// ────────────────────────────────────────────────────────────────
+
+struct IngestResumePipelineRequest {
+  std::string input_path;               // NOLINT(readability-identifier-naming)
+  bool persist{true};                   // NOLINT(readability-identifier-naming)
+  std::optional<std::string> trace_id;  // NOLINT(readability-identifier-naming)
+};
+
+struct IngestResumePipelineResponse {
+  std::string resume_id;    // NOLINT(readability-identifier-naming)
+  std::string resume_hash;  // NOLINT(readability-identifier-naming)
+  std::string source_hash;  // NOLINT(readability-identifier-naming)
+  std::string trace_id;     // NOLINT(readability-identifier-naming)
+};
+
+// Ingest a resume file, optionally persist it, and emit audit events.
+// Emits audit events: IngestStarted, IngestCompleted
+// Throws std::runtime_error if ingestion fails.
+[[nodiscard]] IngestResumePipelineResponse run_ingest_resume_pipeline(
+    const IngestResumePipelineRequest& req, ingest::IResumeIngestor& ingestor,
+    ingest::IResumeStore& resume_store, core::Services& services, core::IIdGenerator& id_gen,
+    core::IClock& clock);
+
+// ────────────────────────────────────────────────────────────────
+// Index Build Pipeline
+// ────────────────────────────────────────────────────────────────
+
+struct IndexBuildPipelineRequest {
+  std::string scope{
+      "all"};  // "atoms"|"resumes"|"opps"|"all"  // NOLINT(readability-identifier-naming)
+  std::optional<std::string> trace_id;  // NOLINT(readability-identifier-naming)
+};
+
+struct IndexBuildPipelineResponse {
+  std::string run_id;       // NOLINT(readability-identifier-naming)
+  size_t indexed_count{0};  // NOLINT(readability-identifier-naming)
+  size_t skipped_count{0};  // NOLINT(readability-identifier-naming)
+  size_t stale_count{0};    // NOLINT(readability-identifier-naming)
+  std::string trace_id;     // NOLINT(readability-identifier-naming)
+};
+
+// Build or rebuild the embedding vector index for the given scope.
+// provider_id identifies the embedding backend (e.g. "deterministic-stub").
+// Emits audit events: IndexBuildStarted, IndexBuildCompleted
+[[nodiscard]] IndexBuildPipelineResponse run_index_build_pipeline(
+    const IndexBuildPipelineRequest& req, ingest::IResumeStore& resume_store,
+    indexing::IIndexRunStore& index_run_store, core::Services& services,
+    const std::string& provider_id, core::IIdGenerator& id_gen, core::IClock& clock);
 
 }  // namespace ccmcp::app

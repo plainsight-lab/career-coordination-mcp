@@ -40,6 +40,11 @@ json handle_match_opportunity(const json& params, ServerContext& ctx) {
       request.trace_id = params["trace_id"];
     }
 
+    // Parse optional resume_id — propagated to audit trail for traceability only
+    if (params.contains("resume_id") && params["resume_id"].is_string()) {
+      request.resume_id = core::ResumeId{params["resume_id"].get<std::string>()};
+    }
+
     // Parse opportunity (simplified: assume provided inline for now)
     if (params.contains("opportunity")) {
       // Full opportunity object parsing would go here
