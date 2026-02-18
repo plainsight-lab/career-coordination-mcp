@@ -123,6 +123,37 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (3, datetime('now'));
 )";
 
+// Embedded schema v4 SQL (adds index_runs + index_entries for embedding lifecycle)
+constexpr const char* kSchemaV4 = R"(
+CREATE TABLE IF NOT EXISTS index_runs (
+  run_id TEXT PRIMARY KEY,
+  started_at TEXT,
+  completed_at TEXT,
+  provider_id TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  status TEXT NOT NULL,
+  summary_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS index_entries (
+  run_id TEXT NOT NULL,
+  artifact_type TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  vector_hash TEXT NOT NULL,
+  indexed_at TEXT,
+  PRIMARY KEY (run_id, artifact_type, artifact_id),
+  FOREIGN KEY(run_id) REFERENCES index_runs(run_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_index_entries_artifact
+  ON index_entries(artifact_type, artifact_id);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (4, datetime('now'));
+)";
+
 SqliteDb::SqliteDb(sqlite3* db) : db_(db) {}
 
 core::Result<std::shared_ptr<SqliteDb>, std::string> SqliteDb::open(const std::string& path) {
@@ -223,6 +254,28 @@ core::Result<bool, std::string> SqliteDb::ensure_schema_v3() {
     std::string error = err_msg != nullptr ? err_msg : "Unknown error";
     sqlite3_free(err_msg);
     return core::Result<bool, std::string>::err("Failed to apply schema v3: " + error);
+  }
+
+  return core::Result<bool, std::string>::ok(true);
+}
+
+core::Result<bool, std::string> SqliteDb::ensure_schema_v4() {
+  // Ensure v3 is applied first
+  auto v3_result = ensure_schema_v3();
+  if (!v3_result.has_value()) {
+    return v3_result;
+  }
+
+  if (get_schema_version() >= 4) {
+    return core::Result<bool, std::string>::ok(true);
+  }
+
+  char* err_msg = nullptr;
+  int rc = sqlite3_exec(db_.get(), kSchemaV4, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v4: " + error);
   }
 
   return core::Result<bool, std::string>::ok(true);

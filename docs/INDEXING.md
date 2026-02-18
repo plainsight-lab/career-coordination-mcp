@@ -1,313 +1,186 @@
-# Status
+# Embedding Index — Design and Implementation
 
-Design spec (v0.1–v0.2).
-Applies to both:
-- Context-Forge (files → chunks → semantic index)
-- career-coordination-mcp (atoms/opportunities → index → retrieval)
+**Implementation status:** v0.3 Slice 4 — fully implemented.
 
-This document defines how canonical sources are indexed into derived stores (SQLite FTS + optional LanceDB) with deterministic rebuild rules.
+This document describes the embedding lifecycle pipeline for `career-coordination-mcp`:
+how canonical sources produce deterministic, auditable embeddings stored with full provenance.
 
 ---
 
-## 1. Purpose
+## 1. Canonical vs. Derived (Invariant)
 
-Provide a local-first, rebuildable indexing pipeline that:
-- treats filesystem artifacts and ExperienceAtoms as canonical sources of truth,
-- generates derived indices (FTS, metadata tables, vector embeddings),
-- supports incremental updates via file watchers,
-- is deterministic and auditable,
-- and avoids “knowledge gravity” where derived stores become canonical.
+Embeddings are **derived artifacts**. They are never canonical.
 
----
+| Store | Role | Rebuildable? |
+|-------|------|-------------|
+| SQLite (`atoms`, `opportunities`, `resumes`) | Canonical source of truth | No |
+| SQLite (`index_runs`, `index_entries`) | Embedding provenance log | Yes |
+| Vector index (`InMemoryEmbeddingIndex`, `SqliteEmbeddingIndex`) | Derived similarity index | Yes |
 
-## 2. Canonical vs Derived
-
-### 2.1 Canonical Sources
-
-Canonical truth lives in:
-- markdown files (book/essays/specs)
-- ExperienceAtoms (stored as canonical records or files)
-- explicitly versioned configs/rules (constitutions)
-
-### 2.2 Derived Stores (Rebuildable)
-
-Derived stores may be deleted and rebuilt at any time:
-- SQLite metadata tables
-- SQLite FTS indices
-- LanceDB vector tables
-- semantic graphs, summaries, caches
-
-Invariant: derived stores are never the only record of meaning.
+**Rebuild rule:** deleting all `index_entries` rows and re-running `index-build` is always safe and produces an equivalent state.
 
 ---
 
-## 3. Indexing Targets
+## 2. Schema v4 — Provenance Tables
 
-### 3.1 Text Artifacts (Files)
+Schema v4 adds two tables to the main SQLite database (applied via `ensure_schema_v4()`):
 
-Index:
-- file metadata (path, timestamps)
-- heading structure
-- chunks (text spans)
-- FTS for chunk search
-- optional embeddings for chunks
+### `index_runs`
 
-### 3.2 ExperienceAtoms
+Records a single index build run.
 
-Index:
-- atom metadata (domain, tags, verified flag)
-- atom text (title, claim)
-- FTS for atoms
-- optional embeddings for atoms
+| Column | Type | Notes |
+|--------|------|-------|
+| `run_id` | TEXT PK | Unique run identifier |
+| `started_at` | TEXT | ISO 8601 UTC; nullable (set when run begins) |
+| `completed_at` | TEXT | ISO 8601 UTC; nullable (set when run completes) |
+| `provider_id` | TEXT | Embedding provider identifier |
+| `model_id` | TEXT | Model identifier (empty for deterministic stub) |
+| `prompt_version` | TEXT | Prompt template version (empty for stub) |
+| `status` | TEXT | `pending` \| `running` \| `completed` \| `failed` |
+| `summary_json` | TEXT | `{"indexed":N,"skipped":N,"stale":N,"scope":"..."}` |
 
-### 3.3 Opportunities (Career Coordination)
+### `index_entries`
 
-Index:
-- structured requirements
-- extracted tags/skills
-- canonical posting metadata (source + timestamp)
-- optional query embeddings (cache)
+Records one embedding per (run, artifact).
 
----
+| Column | Type | Notes |
+|--------|------|-------|
+| `run_id` | TEXT FK | References `index_runs.run_id` |
+| `artifact_type` | TEXT | `atom` \| `resume` \| `opportunity` |
+| `artifact_id` | TEXT | ID of the indexed artifact |
+| `source_hash` | TEXT | `stable_hash64_hex` of canonical text |
+| `vector_hash` | TEXT | `stable_hash64_hex` of raw float bytes |
+| `indexed_at` | TEXT | ISO 8601 UTC; nullable |
 
-## 4. Directory and File Rules (Context-Forge)
-
-### 4.1 Included Files
-
-Default include:
-- **/*.md
-- **/*.txt
-- (optional) **/*.rst
-
-### 4.2 Excluded Paths
-
-Always exclude:
-- .git/**
-- .context-forge/** (derived artifacts, staging, caches)
-- node_modules/**, bin/**, obj/**, build/**
-- .DS_Store, temp files, editor swap files
-
-### 4.3 File Size Guardrails
-
-- If a text file exceeds a size threshold (configurable), index headings + partial chunks only.
-- Always log that truncation occurred.
+Primary key: `(run_id, artifact_type, artifact_id)`.
+Index on `(artifact_type, artifact_id)` for drift detection queries.
 
 ---
 
-## 5. Identity and Stability Strategy
+## 3. Provenance Fields
 
-### 5.1 Artifact Identity
-
-Artifacts are identified by:
-- artifact_id = stable UUID derived from (repo_id, relative_path) or stored once and persisted.
-
-Prefer deterministic IDs if you want portability across machines:
-- artifact_id = UUIDv5(namespace, relative_path)
-
-### 5.2 Chunk Identity (Stability)
-
-Chunks must be stable across minor edits.
-
-Use:
-- chunk_id = UUIDv5(namespace, artifact_id + heading_path + ordinal_index)
-
-Where ordinal_index is the chunk’s index within that heading section.
-
-If chunk boundaries change significantly (e.g., heading changes), chunk IDs may shift; this is acceptable as long as:
-- old chunks are removed
-- new chunks are created deterministically
-- changes are logged
-
-### 5.3 Content Hash
-
-Each chunk and atom stores:
-- content_hash = SHA256(normalized_text)
-
-Normalization includes:
-- normalized line endings
-- trimmed trailing whitespace
-- canonical whitespace collapsing (optional; decide once)
+- **`source_hash`**: hash of the canonical text used to generate the embedding.
+  Changes when the artifact's content changes.
+- **`vector_hash`**: hash of the raw float bytes of the embedding vector.
+  Changes when either the source or the embedding model/prompt changes.
+- **`provider_id` / `model_id` / `prompt_version`**: the three dimensions of a provider scope.
+  A change in any of these fields triggers re-indexing even if the source text is unchanged.
 
 ---
 
-## 6. File Watcher Behavior
+## 4. Canonical Text Extraction
 
-### 6.1 Debounce / Batch Windows
+Each artifact type has a deterministic canonical text function:
 
-To avoid thrash during editing:
-- Debounce per file: 250–750 ms
-- Batch window: 1–3 seconds
-- Coalesce multiple events into one index pass
-
-### 6.2 Event Types
-
-Handle:
-- create
-- modify
-- delete
-- rename/move
-
-Rename handling:
-- treat as delete(old_path) + create(new_path) unless you have a robust rename detector
-
-### 6.3 Index Queue
-
-Watcher emits events → queue → indexer consumes in order.
-
-Indexer must be single-threaded per workspace (for determinism), but may parallelize:
-- embedding generation batches
-- FTS rebuild operations (carefully)
+| Artifact type | Canonical text |
+|--------------|----------------|
+| `atom` | `title + " " + claim + " " + tags.join(" ")` |
+| `resume` | `resume_md` (full markdown content) |
+| `opportunity` | `role_title + " " + company + " " + requirements[].text.join(" ")` |
 
 ---
 
-## 7. Indexing Pipeline (Incremental)
+## 5. Drift Detection
 
-Phase 0 — Discovery
-- Walk workspace roots
-- Identify canonical artifacts
-- Record current snapshot: (path, mtime, size, hash) (hash optional at discovery)
+Before embedding an artifact, the pipeline checks for a prior `source_hash` via
+`IIndexRunStore::get_last_source_hash()`. The query scopes to:
+- the artifact's `(artifact_id, artifact_type)`
+- the run's `(provider_id, model_id, prompt_version)` combination
+- only runs with `status = 'completed'`
+- ordered by `completed_at DESC`, limit 1
 
-Phase 1 — Parse Structure (Files)
-
-For each changed file:
-- parse headings (markdown AST or lightweight heading parser)
-- compute chunk spans (see chunking rules from EMBEDDINGS.md)
-- store chunk metadata + chunk text into SQLite
-
-Phase 2 — Update FTS
-- Upsert chunk text rows into FTS virtual tables
-- Remove rows for deleted chunks/files
-
-Phase 3 — Embedding Update (Optional)
-
-If embeddings enabled:
-- For each chunk/atom where content_hash changed:
-  - request embedding via provider
-  - upsert vector row into LanceDB with same content_hash
-
-Phase 4 — Cleanup
-- Remove orphaned chunks
-- Remove orphaned embeddings (rows that no longer exist in SQLite)
-- Emit index summary stats
+**Result:**
+- Hash **matches**: artifact is skipped (`skipped_count++`).
+- Hash **differs**: artifact is re-indexed (`stale_count++`, `indexed_count++`).
+- **No prior run**: artifact is indexed as new (`indexed_count++`).
 
 ---
 
-## 8. Full Rebuild Procedure
+## 6. NullEmbeddingProvider Behaviour
 
-A full rebuild occurs when:
-- schema version changes
-- embedding dimension/model changes
-- the index is corrupted
-- user explicitly triggers rebuild
+`NullEmbeddingProvider::embed_text()` returns an empty vector (dimension = 0).
 
-Procedure:
-1. Drop derived tables / clear LanceDB
-2. Re-scan canonical sources
-3. Recreate schema
-4. Re-index all files/atoms
-5. Rebuild FTS
-6. Re-embed everything (if enabled)
+The pipeline checks `embedding.empty()` before upsert. If empty:
+- no vector is written to the index
+- no `IndexEntry` is written to `index_entries`
+- `indexed_count` is **not** incremented
+- `skipped_count` is **not** incremented
 
-Full rebuild must be:
-- deterministic
-- logged with trace_id
-- produce summary counts
+This is not an error — it is an explicit opt-out of indexing. The run still completes
+with `status = completed`.
 
 ---
 
-## 9. Schema Versioning
+## 7. Rebuild Strategy
 
-Maintain:
-- INDEX_SCHEMA_VERSION (integer or semver)
+A full rebuild consists of:
 
-Store in SQLite:
-- meta table: key, value
+1. Delete (or truncate) `index_entries` rows, or simply re-run `index-build` — the
+   pipeline does full upsert (INSERT OR REPLACE), so duplicates overwrite.
+2. Run `ccmcp_cli index-build --scope all`.
 
-On startup:
-- if schema mismatch:
-  - either migrate (if supported)
-  - or require full rebuild
-
-Recommendation: early phase → prefer full rebuild over complex migrations.
+No schema migration is needed for content changes. Schema changes require `ensure_schema_v4()`.
 
 ---
 
-## 10. Performance Targets (Practical)
+## 8. Vector Index Key Naming
 
-v0.1 (FTS-only)
-- Index 1,000 markdown files in < 10 seconds on a modern machine
-- Incremental update for a single edited file < 250 ms (excluding debounce)
-
-v0.2 (Embeddings enabled)
-- Embedding updates batched:
-  - batch size 16–64 chunks per request (provider dependent)
-- UI remains responsive:
-  - embeddings run in background worker thread
-  - results are applied atomically
+| Artifact type | Vector key |
+|--------------|-----------|
+| `atom` | `{artifact_id}` |
+| `resume` | `resume:{artifact_id}` |
+| `opportunity` | `opp:{artifact_id}` |
 
 ---
 
-## 11. Atomicity and Consistency
+## 9. Audit Events
 
-Index updates should be applied atomically:
-- Use SQLite transactions per batch update.
-- Embedding updates should be committed only after successful vector upsert.
+Every index build run emits three event types into `IAuditLog`, using the `run_id` as `trace_id`:
 
-Consistency rule:
-- SQLite metadata is source-of-truth for derived index integrity.
-- LanceDB rows must correspond to existing SQLite rows with matching content_hash.
-
----
-
-## 12. Error Handling and Recovery
-
-Indexer failures must not corrupt canonical sources.
-
-On error:
-- log a structured error event
-- mark index state as “stale”
-- allow user-triggered rebuild
-- continue serving last-known-good index if possible
-
-Track error types:
-- parse errors (bad markdown)
-- FTS update errors
-- embedding provider errors
-- LanceDB upsert errors
+| Event type | Payload fields |
+|-----------|---------------|
+| `IndexRunStarted` | `run_id`, `scope`, `provider_id` |
+| `IndexedArtifact` | `artifact_type`, `artifact_id`, `source_hash`, `stale` |
+| `IndexRunCompleted` | `run_id`, `indexed`, `skipped`, `stale` |
 
 ---
 
-## 13. Observability / Logging
+## 10. CLI Usage
 
-For each indexing run emit:
-- trace_id
-- start/end time
-- number of files scanned
-- number of files changed
-- chunks added/updated/removed
-- FTS rows updated
-- embeddings queued/completed/failed
-- schema version
-- embedding provider + dimension (if enabled)
+```bash
+# Build/rebuild with in-memory vector index (useful for testing)
+ccmcp_cli index-build --db career.db --vector-backend inmemory --scope all
 
-Use structured logs (JSON) so you can feed into CVE/audit tooling later.
+# Build with SQLite vector backend (persisted)
+ccmcp_cli index-build --db career.db --vector-backend sqlite --vector-db-path ./vectors --scope atoms
 
----
+# Scope options: atoms | resumes | opportunities | all
+ccmcp_cli index-build --db career.db --scope resumes
+```
 
-## 14. Integration Notes (Career Coordination MCP)
-
-Atoms and opportunities can be treated as “artifacts” too.
-
-Indexing for career coordination:
-- Atom changesDV: whenever atom changes → update SQLite FTS + embedding row
-- Opportunity ingestion: create structured Opportunity record + derived query text for retrieval
-- Matching uses EMBEDDINGS.md pipeline with Job Matching preset weights
+Default values if flags are omitted:
+- `--db`: `data/ccmcp.db`
+- `--vector-backend`: `inmemory`
+- `--scope`: `all`
 
 ---
 
-## 15. Non-Goals
+## 11. Interfaces
 
-- Real-time indexing at keystroke speed
-- Distributed indexing
-- Cross-machine index sync
-- Treating derived stores as canonical truth
+| Interface | Location | Purpose |
+|-----------|----------|---------|
+| `IIndexRunStore` | `include/ccmcp/indexing/index_run_store.h` | Persist/retrieve runs and entries |
+| `SqliteIndexRunStore` | `include/ccmcp/storage/sqlite/sqlite_index_run_store.h` | SQLite implementation |
+| `run_index_build()` | `include/ccmcp/indexing/index_build_pipeline.h` | Pipeline entry point |
+
+---
+
+## 12. Design Constraints (Unchanged)
+
+- **Matcher scoring formula**: unchanged.
+- **`IEmbeddingProvider` interface**: unchanged.
+- **`IEmbeddingIndex` interface**: unchanged.
+- **`Services` struct**: unchanged.
+- **Schemas v1–v3**: unchanged. Schema v4 is additive.
+- **All existing CLI commands**: unchanged.

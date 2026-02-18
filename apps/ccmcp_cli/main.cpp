@@ -6,6 +6,7 @@
 #include "ccmcp/domain/opportunity.h"
 #include "ccmcp/domain/requirement.h"
 #include "ccmcp/embedding/embedding_provider.h"
+#include "ccmcp/indexing/index_build_pipeline.h"
 #include "ccmcp/ingest/resume_ingestor.h"
 #include "ccmcp/matching/matcher.h"
 #include "ccmcp/storage/audit_event.h"
@@ -16,6 +17,7 @@
 #include "ccmcp/storage/sqlite/sqlite_atom_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_audit_log.h"
 #include "ccmcp/storage/sqlite/sqlite_db.h"
+#include "ccmcp/storage/sqlite/sqlite_index_run_store.h"
 #include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
@@ -48,6 +50,7 @@ void run_cli_logic(ccmcp::core::Services& services, ccmcp::core::DeterministicId
                    ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy);
 int run_ingest_resume(int argc, char* argv[]);
 int run_tokenize_resume(int argc, char* argv[]);
+int run_index_build_cmd(int argc, char* argv[]);
 
 // Parse command line arguments
 CliConfig parse_cli_args(int argc, char* argv[]) {
@@ -90,6 +93,8 @@ int main(int argc, char* argv[]) {
       return run_ingest_resume(argc, argv);
     } else if (subcommand == "tokenize-resume") {
       return run_tokenize_resume(argc, argv);
+    } else if (subcommand == "index-build") {
+      return run_index_build_cmd(argc, argv);
     }
   }
 
@@ -445,6 +450,107 @@ int run_tokenize_resume(int argc, char* argv[]) {
   }
   std::cout << "  Total tokens: " << total_tokens << "\n";
   std::cout << "  Spans: " << token_ir.spans.size() << "\n";
+
+  return 0;
+}
+
+// index-build subcommand implementation
+int run_index_build_cmd(int argc, char* argv[]) {
+  // Usage: ccmcp_cli index-build [--db <path>] [--vector-backend inmemory|sqlite]
+  //                              [--vector-db-path <dir>] [--scope atoms|resumes|opportunities|all]
+  std::string db_path = "data/ccmcp.db";
+  std::string vector_backend = "inmemory";
+  std::optional<std::string> vector_db_path;
+  std::string scope = "all";
+
+  for (int i = 2; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--db" && i + 1 < argc) {
+      db_path = argv[++i];
+    } else if (arg == "--vector-backend" && i + 1 < argc) {
+      std::string backend = argv[++i];
+      if (backend == "inmemory" || backend == "sqlite") {
+        vector_backend = backend;
+      } else {
+        std::cerr << "Invalid --vector-backend: " << backend << " (valid: inmemory, sqlite)\n";
+        return 1;
+      }
+    } else if (arg == "--vector-db-path" && i + 1 < argc) {
+      vector_db_path = argv[++i];
+    } else if (arg == "--scope" && i + 1 < argc) {
+      std::string s = argv[++i];
+      if (s == "atoms" || s == "resumes" || s == "opportunities" || s == "all") {
+        scope = s;
+      } else {
+        std::cerr << "Invalid --scope: " << s << " (valid: atoms, resumes, opportunities, all)\n";
+        return 1;
+      }
+    }
+  }
+
+  if (vector_backend == "sqlite" && !vector_db_path.has_value()) {
+    std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
+    return 1;
+  }
+
+  // Open database and apply schema v4.
+  auto db_result = ccmcp::storage::sqlite::SqliteDb::open(db_path);
+  if (!db_result.has_value()) {
+    std::cerr << "Failed to open database: " << db_result.error() << "\n";
+    return 1;
+  }
+
+  auto db = db_result.value();
+  auto schema_result = db->ensure_schema_v4();
+  if (!schema_result.has_value()) {
+    std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
+    return 1;
+  }
+
+  // Construct concrete repositories.
+  ccmcp::storage::sqlite::SqliteAtomRepository atom_repo(db);
+  ccmcp::storage::sqlite::SqliteOpportunityRepository opp_repo(db);
+  ccmcp::storage::sqlite::SqliteResumeStore resume_store(db);
+  ccmcp::storage::sqlite::SqliteIndexRunStore run_store(db);
+  ccmcp::storage::sqlite::SqliteAuditLog audit_log(db);
+
+  // Construct vector index.
+  std::unique_ptr<ccmcp::vector::IEmbeddingIndex> vector_index_owner;
+  if (vector_backend == "sqlite") {
+    const std::string& dir = vector_db_path.value();
+    std::filesystem::create_directories(dir);
+    const std::string db_file = dir + "/vectors.db";
+    try {
+      vector_index_owner = std::make_unique<ccmcp::vector::SqliteEmbeddingIndex>(db_file);
+      std::cout << "Using SQLite-backed vector index: " << db_file << "\n";
+    } catch (const std::exception& e) {
+      std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
+      return 1;
+    }
+  } else {
+    vector_index_owner = std::make_unique<ccmcp::vector::InMemoryEmbeddingIndex>();
+  }
+
+  // Use DeterministicStubEmbeddingProvider (128-dim) for v0.3.
+  ccmcp::embedding::DeterministicStubEmbeddingProvider embedding_provider(128);
+
+  ccmcp::core::DeterministicIdGenerator id_gen;
+  ccmcp::core::SystemClock clock;
+
+  ccmcp::indexing::IndexBuildConfig build_config{scope, "deterministic-stub", "", ""};
+
+  std::cout << "Starting index-build: db=" << db_path << " scope=" << scope
+            << " backend=" << vector_backend << "\n";
+
+  const auto result = ccmcp::indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store,
+                                                       *vector_index_owner, embedding_provider,
+                                                       audit_log, id_gen, clock, build_config);
+
+  std::cout << "Index build complete:\n";
+  std::cout << "  run_id:  " << result.run_id << "\n";
+  std::cout << "  indexed: " << result.indexed_count << "\n";
+  std::cout << "  skipped: " << result.skipped_count << "\n";
+  std::cout << "  stale:   " << result.stale_count << "\n";
 
   return 0;
 }

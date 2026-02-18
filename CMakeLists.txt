@@ -60,6 +60,9 @@ add_library(ccmcp
   src/ingest/format_adapter.cpp
   src/ingest/hygiene.cpp
   src/ingest/resume_ingestor.cpp
+  src/indexing/index_run.cpp
+  src/indexing/index_build_pipeline.cpp
+  src/storage/sqlite/sqlite_index_run_store.cpp
   src/embedding/deterministic_stub_embedding_provider.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp
