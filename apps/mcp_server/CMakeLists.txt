@@ -15,3 +15,6 @@ target_link_libraries(mcp_server
   PRIVATE
     ccmcp
 )
+
+# ${CMAKE_CURRENT_SOURCE_DIR}/..  → apps/ (for "shared/arg_parser.h" in config.cpp)
+target_include_directories(mcp_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)

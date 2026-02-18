@@ -1,26 +1,13 @@
 #include "config.h"
 
-#include <functional>
+#include "shared/arg_parser.h"
 #include <iostream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace ccmcp::mcp {
 
 namespace {
-
-// ────────────────────────────────────────────────────────────────
-// Option Definition
-// ────────────────────────────────────────────────────────────────
-
-struct Option {
-  std::string name;         // NOLINT(readability-identifier-naming)
-  bool requires_value;      // NOLINT(readability-identifier-naming)
-  std::string description;  // NOLINT(readability-identifier-naming)
-  std::function<bool(McpServerConfig& config, const std::string& value)>
-      handler;  // NOLINT(readability-identifier-naming)
-};
 
 // ────────────────────────────────────────────────────────────────
 // Option Handlers
@@ -67,7 +54,7 @@ bool handle_matching_strategy(McpServerConfig& config, const std::string& value)
 // Option Registry
 // ────────────────────────────────────────────────────────────────
 
-std::vector<Option> build_option_registry() {
+std::vector<apps::Option<McpServerConfig>> build_option_registry() {
   return {
       {"--db", true, "Path to SQLite database file", handle_db},
       {"--redis", true, "Redis URI for interaction coordination", handle_redis},
@@ -86,38 +73,7 @@ std::vector<Option> build_option_registry() {
 // ────────────────────────────────────────────────────────────────
 
 McpServerConfig parse_args(int argc, char* argv[]) {
-  McpServerConfig config;
-  auto options = build_option_registry();
-
-  // Build lookup map for O(1) option dispatch
-  std::unordered_map<std::string, const Option*> option_map;
-  for (const auto& opt : options) {
-    option_map[opt.name] = &opt;
-  }
-
-  for (int i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
-
-    auto it = option_map.find(arg);
-    if (it != option_map.end()) {
-      const Option* opt = it->second;
-
-      if (opt->requires_value) {
-        if (i + 1 < argc) {
-          std::string value = argv[++i];
-          opt->handler(config, value);
-        } else {
-          std::cerr << "Option " << arg << " requires a value\n";
-        }
-      } else {
-        opt->handler(config, "");
-      }
-    } else {
-      std::cerr << "Unknown option: " << arg << "\n";
-    }
-  }
-
-  return config;
+  return apps::parse_options(argc, argv, build_option_registry());
 }
 
 }  // namespace ccmcp::mcp
