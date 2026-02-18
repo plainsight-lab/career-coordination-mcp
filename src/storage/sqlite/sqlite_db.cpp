@@ -123,6 +123,24 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (3, datetime('now'));
 )";
 
+// Embedded schema v5 SQL (adds decision_records for match decision provenance)
+constexpr const char* kSchemaV5 = R"(
+CREATE TABLE IF NOT EXISTS decision_records (
+  decision_id    TEXT PRIMARY KEY,
+  trace_id       TEXT NOT NULL,
+  opportunity_id TEXT NOT NULL,
+  artifact_id    TEXT NOT NULL,
+  decision_json  TEXT NOT NULL,
+  created_at     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_records_trace
+  ON decision_records(trace_id);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (5, datetime('now'));
+)";
+
 // Embedded schema v4 SQL (adds index_runs + index_entries for embedding lifecycle)
 constexpr const char* kSchemaV4 = R"(
 CREATE TABLE IF NOT EXISTS index_runs (
@@ -276,6 +294,28 @@ core::Result<bool, std::string> SqliteDb::ensure_schema_v4() {
     std::string error = err_msg != nullptr ? err_msg : "Unknown error";
     sqlite3_free(err_msg);
     return core::Result<bool, std::string>::err("Failed to apply schema v4: " + error);
+  }
+
+  return core::Result<bool, std::string>::ok(true);
+}
+
+core::Result<bool, std::string> SqliteDb::ensure_schema_v5() {
+  // Ensure v4 is applied first
+  auto v4_result = ensure_schema_v4();
+  if (!v4_result.has_value()) {
+    return v4_result;
+  }
+
+  if (get_schema_version() >= 5) {
+    return core::Result<bool, std::string>::ok(true);
+  }
+
+  char* err_msg = nullptr;
+  int rc = sqlite3_exec(db_.get(), kSchemaV5, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v5: " + error);
   }
 
   return core::Result<bool, std::string>::ok(true);

@@ -109,6 +109,28 @@ json handle_tools_list(const JsonRpcRequest& /*req*/, ServerContext& /*ctx*/) {
        }},
   });
 
+  tools.push_back({
+      {"name", "get_decision"},
+      {"description", "Fetch a match decision record by decision_id"},
+      {"inputSchema",
+       {
+           {"type", "object"},
+           {"properties", {{"decision_id", {{"type", "string"}}}}},
+           {"required", json::array({"decision_id"})},
+       }},
+  });
+
+  tools.push_back({
+      {"name", "list_decisions"},
+      {"description", "List all decision records for a given trace_id"},
+      {"inputSchema",
+       {
+           {"type", "object"},
+           {"properties", {{"trace_id", {{"type", "string"}}}}},
+           {"required", json::array({"trace_id"})},
+       }},
+  });
+
   return json{{"tools", tools}};
 }
 

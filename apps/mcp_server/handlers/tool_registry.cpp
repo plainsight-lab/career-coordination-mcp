@@ -1,6 +1,7 @@
 #include "tool_registry.h"
 
 #include "get_audit_trace.h"
+#include "get_decision.h"
 #include "index_build.h"
 #include "ingest_resume.h"
 #include "interaction_apply_event.h"
@@ -17,6 +18,8 @@ std::unordered_map<std::string, ToolHandler> build_tool_registry() {
       {"interaction_apply_event", handle_interaction_apply_event},
       {"ingest_resume", handle_ingest_resume},
       {"index_build", handle_index_build},
+      {"get_decision", handle_get_decision},
+      {"list_decisions", handle_list_decisions},
   };
 }
 

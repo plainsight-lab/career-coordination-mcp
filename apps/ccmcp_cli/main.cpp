@@ -1,3 +1,4 @@
+#include "commands/decision.h"
 #include "commands/index_build.h"
 #include "commands/ingest_resume.h"
 #include "commands/match.h"
@@ -15,11 +16,13 @@ struct Command {
                  char*[]);  // NOLINT(readability-identifier-naming,modernize-avoid-c-arrays)
 };
 
-const std::array<Command, 4> kCommands = {{
+const std::array<Command, 6> kCommands = {{
     {"ingest-resume", "Ingest a resume file into the database", cmd_ingest_resume},
     {"tokenize-resume", "Tokenize an ingested resume into a token IR", cmd_tokenize_resume},
     {"index-build", "Build or rebuild the embedding vector index", cmd_index_build},
     {"match", "Run a demo match against a hardcoded ExampleCo opportunity", cmd_match},
+    {"get-decision", "Fetch a match decision record by decision ID", cmd_get_decision},
+    {"list-decisions", "List match decision records for a trace ID", cmd_list_decisions},
 }};
 
 void print_usage(const char* prog) {

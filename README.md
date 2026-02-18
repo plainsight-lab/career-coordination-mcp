@@ -131,13 +131,14 @@ career-coordination-mcp/
 │   ├── app/               # Pipeline orchestration (app_service)
 │   ├── constitution/      # Rules, ValidationEngine, Findings
 │   ├── core/              # IDs, Result<T>, hashing, utilities
-│   ├── domain/            # Atoms, Opportunities, Interactions
+│   ├── domain/            # Atoms, Opportunities, Interactions, DecisionRecord
 │   ├── embedding/         # IEmbeddingProvider + stub implementations
 │   ├── indexing/          # IIndexRunStore, IndexBuildPipeline, drift detection
 │   ├── ingest/            # IResumeIngestor, IResumeStore, IngestedResume
 │   ├── interaction/       # IInteractionCoordinator, FSM, Redis coordinator
 │   ├── matching/          # Lexical + hybrid retrieval, scoring
-│   ├── storage/           # IAuditLog, IAtomRepository, IOpportunityRepository
+│   ├── storage/           # IAuditLog, IAtomRepository, IOpportunityRepository,
+│   │   │                  # IDecisionStore
 │   │   └── sqlite/        # SqliteDb, all SQLite implementations
 │   ├── tokenization/      # Token IR, semantic tokenizer
 │   └── vector/            # IEmbeddingIndex, InMemory + SQLite implementations
@@ -145,10 +146,11 @@ career-coordination-mcp/
 ├── apps/
 │   ├── shared/            # Shared arg_parser template (used by both apps)
 │   ├── ccmcp_cli/         # CLI reference app
-│   │   └── commands/      # ingest-resume, tokenize-resume, index-build, match
+│   │   └── commands/      # ingest-resume, tokenize-resume, index-build, match,
+│   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 163 deterministic unit tests
+├── tests/                 # 175 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
@@ -161,14 +163,15 @@ All v0.3 slices are implemented and passing. See [Roadmap](#roadmap) below for f
 - Constitutional validation engine with rule packs and machine-readable reports
 - Append-only audit log with full trace retrieval
 - Outreach interaction state machine (FSM) with idempotent transitions
-- SQLite persistence for atoms, opportunities, interactions, audit log, resumes, and index runs
+- SQLite persistence for atoms, opportunities, interactions, audit log, resumes, index runs, and decision records
 - Redis-backed interaction coordination
 - Resume ingestion pipeline (Markdown, TXT, DOCX stub, PDF stub) with hygiene normalization
 - Token IR generation with constitutional validation
 - SQLite-backed embedding vector index with persistent storage
 - Embedding lifecycle: deterministic index build/rebuild with drift detection (source hash comparison)
+- Decision records: first-class queryable provenance artifacts capturing the full "why" of each match decision (per-requirement atom attribution, retrieval stats, validation summary)
 - MCP server exposing all tools with persistent backend wiring
-- CLI commands: `ingest-resume`, `tokenize-resume`, `index-build`, `match`
+- CLI commands: `ingest-resume`, `tokenize-resume`, `index-build`, `match`, `get-decision`, `list-decisions`
 
 ---
 
@@ -265,7 +268,7 @@ The engine can integrate LLM providers later, but:
 - Redis-backed interaction state machine coordination
 - MCP protocol server with app_service layer
 
-### v0.3 ✅ Complete (5 slices + CLI refactor)
+### v0.3 ✅ Complete (6 slices + CLI refactor)
 
 **Slice 1 — Resume Ingestion Pipeline**
 - Multi-format ingestion (Markdown, TXT; DOCX and PDF stubs)
@@ -307,6 +310,20 @@ The engine can integrate LLM providers later, but:
 - `ServerContext` extended with `IResumeIngestor`, `IResumeStore`, `IIndexRunStore`
 - Ephemeral fallback: all subsystems announce WARNING on stderr when not persistent
 - See [MCP_SERVER.md](docs/MCP_SERVER.md)
+
+**Slice 6 — Decision Records**
+- SQLite schema v5 (`decision_records` table, indexed by `trace_id`)
+- `DecisionRecord`: first-class provenance artifact capturing the full "why" of a match decision
+  - Per-requirement atom attribution (`atom_id`, `evidence_tokens`)
+  - Retrieval stats snapshot (lexical, embedding, merged candidate counts)
+  - Validation summary (status, finding counts, top rule IDs from fail/block/warn findings)
+- `IDecisionStore` interface + `SqliteDecisionStore` + `InMemoryDecisionStore`
+- `record_match_decision()`: called after every `match_opportunity` run; emits `DecisionRecorded` audit event
+- `match_opportunity` response now includes `decision_id` for immediate lookup
+- Two new MCP tools: `get_decision`, `list_decisions`
+- Two new CLI commands: `ccmcp_cli get-decision`, `ccmcp_cli list-decisions`
+- Deterministic JSON serialization (alphabetically sorted keys via `nlohmann::json` std::map default)
+- See [DECISION_RECORDS.md](docs/DECISION_RECORDS.md)
 
 ### v0.4+ (Future)
 - Containerization (enables Poppler/MuPDF for real PDF extraction)

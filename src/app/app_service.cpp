@@ -7,6 +7,8 @@
 #include "ccmcp/indexing/index_build_pipeline.h"
 #include "ccmcp/ingest/ingest_result.h"
 
+#include <algorithm>
+#include <set>
 #include <stdexcept>
 
 namespace ccmcp::app {
@@ -212,6 +214,114 @@ InteractionTransitionResponse run_interaction_transition(
 std::vector<storage::AuditEvent> fetch_audit_trace(const std::string& trace_id,
                                                    core::Services& services) {
   return services.audit_log.query(trace_id);
+}
+
+// ── Decision Record helpers (file-scope) ─────────────────────────────────────
+
+// Pure transformation: maps a MatchPipelineResponse into a DecisionRecord.
+// No IO, no ID generation, no time calls — all inputs are explicit parameters.
+// Separated from record_match_decision() so the mapping logic is independently
+// readable and the effectful coordinator remains short (F.3).
+static domain::DecisionRecord build_decision_record(const MatchPipelineResponse& pipeline_response,
+                                                    const std::string& decision_id,
+                                                    const std::string& created_at) {
+  const auto& match_report = pipeline_response.match_report;
+  const auto& validation_report = pipeline_response.validation_report;
+
+  // Map requirement matches → RequirementDecisions
+  std::vector<domain::RequirementDecision> req_decisions;
+  req_decisions.reserve(match_report.requirement_matches.size());
+  for (const auto& rm : match_report.requirement_matches) {
+    domain::RequirementDecision rd;
+    rd.requirement_text = rm.requirement_text;
+    if (rm.contributing_atom_id.has_value()) {
+      rd.atom_id = rm.contributing_atom_id.value().value;
+    }
+    rd.evidence_tokens = rm.evidence_tokens;
+    req_decisions.push_back(std::move(rd));
+  }
+
+  // Map retrieval stats
+  domain::RetrievalStatsSummary stats;
+  stats.lexical_candidates = match_report.retrieval_stats.lexical_candidates;
+  stats.embedding_candidates = match_report.retrieval_stats.embedding_candidates;
+  stats.merged_candidates = match_report.retrieval_stats.merged_candidates;
+
+  // Map validation report → ValidationSummary
+  domain::ValidationSummary vsummary;
+  vsummary.status = [&]() -> std::string {
+    switch (validation_report.status) {
+      case constitution::ValidationStatus::kAccepted:
+        return "accepted";
+      case constitution::ValidationStatus::kRejected:
+        return "rejected";
+      case constitution::ValidationStatus::kBlocked:
+        return "blocked";
+      case constitution::ValidationStatus::kNeedsReview:
+        return "needs_review";
+      default:
+        return "unknown";
+    }
+  }();
+  vsummary.finding_count = validation_report.findings.size();
+
+  std::set<std::string> top_rule_id_set;
+  for (const auto& f : validation_report.findings) {
+    const bool is_fail_or_block = (f.severity == constitution::FindingSeverity::kFail ||
+                                   f.severity == constitution::FindingSeverity::kBlock);
+    const bool is_warn = (f.severity == constitution::FindingSeverity::kWarn);
+    if (is_fail_or_block || is_warn) {
+      vsummary.fail_count += is_fail_or_block ? 1 : 0;
+      vsummary.warn_count += is_warn ? 1 : 0;
+      top_rule_id_set.insert(f.rule_id);
+    }
+  }
+  vsummary.top_rule_ids.assign(top_rule_id_set.begin(), top_rule_id_set.end());
+
+  domain::DecisionRecord record;
+  record.decision_id = decision_id;
+  record.trace_id = pipeline_response.trace_id;
+  record.artifact_id = "match-report-" + match_report.opportunity_id.value;
+  record.created_at = created_at;
+  record.opportunity_id = match_report.opportunity_id.value;
+  record.requirement_decisions = std::move(req_decisions);
+  record.retrieval_stats = std::move(stats);
+  record.validation_summary = std::move(vsummary);
+  return record;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+std::string record_match_decision(const MatchPipelineResponse& pipeline_response,
+                                  storage::IDecisionStore& decision_store, core::Services& services,
+                                  core::IIdGenerator& id_gen, core::IClock& clock) {
+  const std::string decision_id = id_gen.next("decision");
+  // Capture timestamp once: record.created_at and the audit event share the same value,
+  // avoiding two calls to clock which would diverge under a real-time clock.
+  const std::string created_at = clock.now_iso8601();
+
+  const auto record = build_decision_record(pipeline_response, decision_id, created_at);
+  decision_store.upsert(record);
+
+  services.audit_log.append({id_gen.next("evt"),
+                             pipeline_response.trace_id,
+                             "DecisionRecorded",
+                             R"({"decision_id":")" + decision_id + R"(","opportunity_id":")" +
+                                 record.opportunity_id + "\"}",
+                             created_at,
+                             {record.opportunity_id, decision_id}});
+
+  return decision_id;
+}
+
+std::optional<domain::DecisionRecord> fetch_decision(const std::string& decision_id,
+                                                     storage::IDecisionStore& decision_store) {
+  return decision_store.get(decision_id);
+}
+
+std::vector<domain::DecisionRecord> list_decisions_by_trace(
+    const std::string& trace_id, storage::IDecisionStore& decision_store) {
+  return decision_store.list_by_trace(trace_id);
 }
 
 IngestResumePipelineResponse run_ingest_resume_pipeline(const IngestResumePipelineRequest& req,

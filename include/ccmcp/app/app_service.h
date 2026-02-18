@@ -6,6 +6,7 @@
 #include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
 #include "ccmcp/core/services.h"
+#include "ccmcp/domain/decision_record.h"
 #include "ccmcp/domain/interaction.h"
 #include "ccmcp/domain/match_report.h"
 #include "ccmcp/domain/opportunity.h"
@@ -15,6 +16,7 @@
 #include "ccmcp/interaction/interaction_coordinator.h"
 #include "ccmcp/matching/matcher.h"
 #include "ccmcp/storage/audit_event.h"
+#include "ccmcp/storage/decision_store.h"
 
 #include <optional>
 #include <string>
@@ -104,6 +106,26 @@ struct InteractionTransitionResponse {
 // Fetch all audit events for a given trace_id
 [[nodiscard]] std::vector<storage::AuditEvent> fetch_audit_trace(const std::string& trace_id,
                                                                  core::Services& services);
+
+// ────────────────────────────────────────────────────────────────
+// Decision Records
+// ────────────────────────────────────────────────────────────────
+
+// Build and persist a DecisionRecord from a completed match pipeline response.
+// Emits audit event: DecisionRecorded
+// Returns the generated decision_id.
+[[nodiscard]] std::string record_match_decision(const MatchPipelineResponse& pipeline_response,
+                                                storage::IDecisionStore& decision_store,
+                                                core::Services& services,
+                                                core::IIdGenerator& id_gen, core::IClock& clock);
+
+// Fetch a single decision record by decision_id. Returns nullopt if not found.
+[[nodiscard]] std::optional<domain::DecisionRecord> fetch_decision(
+    const std::string& decision_id, storage::IDecisionStore& decision_store);
+
+// List all decision records for a trace, ordered by decision_id ascending.
+[[nodiscard]] std::vector<domain::DecisionRecord> list_decisions_by_trace(
+    const std::string& trace_id, storage::IDecisionStore& decision_store);
 
 // ────────────────────────────────────────────────────────────────
 // Ingest Resume Pipeline

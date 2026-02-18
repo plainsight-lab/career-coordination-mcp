@@ -11,6 +11,7 @@ add_executable(mcp_server
   handlers/tool_registry.cpp
   handlers/ingest_resume.cpp
   handlers/index_build.cpp
+  handlers/get_decision.cpp
 )
 
 target_link_libraries(mcp_server

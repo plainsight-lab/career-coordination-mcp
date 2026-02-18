@@ -4,6 +4,7 @@ add_executable(ccmcp_cli
   commands/tokenize_resume.cpp
   commands/index_build.cpp
   commands/match.cpp
+  commands/decision.cpp
 )
 
 target_link_libraries(ccmcp_cli PRIVATE ccmcp nlohmann_json::nlohmann_json)

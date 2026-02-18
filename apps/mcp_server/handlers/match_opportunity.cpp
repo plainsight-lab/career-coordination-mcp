@@ -68,9 +68,14 @@ json handle_match_opportunity(const json& params, ServerContext& ctx) {
     // Run pipeline
     auto response = app::run_match_pipeline(request, ctx.services, ctx.id_gen, ctx.clock);
 
+    // Persist decision record (non-fatal: record the "why" but do not block the response)
+    const std::string decision_id = app::record_match_decision(response, ctx.decision_store,
+                                                               ctx.services, ctx.id_gen, ctx.clock);
+
     // Build JSON response
     json result;
     result["trace_id"] = response.trace_id;
+    result["decision_id"] = decision_id;
 
     result["match_report"] = {
         {"opportunity_id", response.match_report.opportunity_id.value},

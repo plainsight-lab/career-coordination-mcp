@@ -63,6 +63,9 @@ add_library(ccmcp
   src/indexing/index_run.cpp
   src/indexing/index_build_pipeline.cpp
   src/storage/sqlite/sqlite_index_run_store.cpp
+  src/domain/decision_record.cpp
+  src/storage/decision_store.cpp
+  src/storage/sqlite/sqlite_decision_store.cpp
   src/embedding/deterministic_stub_embedding_provider.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp

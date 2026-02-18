@@ -52,6 +52,9 @@ class SqliteDb {
   // Apply schema v4 if not already applied (adds index_runs + index_entries tables)
   [[nodiscard]] core::Result<bool, std::string> ensure_schema_v4();
 
+  // Apply schema v5 if not already applied (adds decision_records table)
+  [[nodiscard]] core::Result<bool, std::string> ensure_schema_v5();
+
   // Execute SQL statement (for non-query operations)
   [[nodiscard]] core::Result<bool, std::string> exec(const std::string& sql);
 

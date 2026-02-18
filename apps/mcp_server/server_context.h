@@ -7,6 +7,7 @@
 #include "ccmcp/ingest/resume_ingestor.h"
 #include "ccmcp/ingest/resume_store.h"
 #include "ccmcp/interaction/interaction_coordinator.h"
+#include "ccmcp/storage/decision_store.h"
 
 #include "config.h"
 
@@ -20,6 +21,7 @@ struct ServerContext {
   ingest::IResumeIngestor& ingestor;                  // NOLINT(readability-identifier-naming)
   ingest::IResumeStore& resume_store;                 // NOLINT(readability-identifier-naming)
   indexing::IIndexRunStore& index_run_store;          // NOLINT(readability-identifier-naming)
+  storage::IDecisionStore& decision_store;            // NOLINT(readability-identifier-naming)
   core::IIdGenerator& id_gen;                         // NOLINT(readability-identifier-naming)
   core::IClock& clock;                                // NOLINT(readability-identifier-naming)
   McpServerConfig& config;                            // NOLINT(readability-identifier-naming)

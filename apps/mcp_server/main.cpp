@@ -13,6 +13,7 @@
 #include "ccmcp/storage/sqlite/sqlite_atom_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_audit_log.h"
 #include "ccmcp/storage/sqlite/sqlite_db.h"
+#include "ccmcp/storage/sqlite/sqlite_decision_store.h"
 #include "ccmcp/storage/sqlite/sqlite_index_run_store.h"
 #include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
@@ -119,8 +120,8 @@ int main(int argc, char* argv[]) {
     }
 
     auto db = db_result.value();
-    // ensure_schema_v4 chains v1→v4; all schema migrations are idempotent.
-    auto schema_result = db->ensure_schema_v4();
+    // ensure_schema_v5 chains v1→v5; all schema migrations are idempotent.
+    auto schema_result = db->ensure_schema_v5();
     if (!schema_result.has_value()) {
       std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
       return 1;
@@ -132,6 +133,7 @@ int main(int argc, char* argv[]) {
     storage::sqlite::SqliteAuditLog audit_log(db);
     storage::sqlite::SqliteResumeStore resume_store(db);
     storage::sqlite::SqliteIndexRunStore index_run_store(db);
+    storage::sqlite::SqliteDecisionStore decision_store(db);
 
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
@@ -141,8 +143,8 @@ int main(int argc, char* argv[]) {
     if (config.redis_uri.has_value()) {
       try {
         interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
-        mcp::ServerContext ctx{services,        coordinator, ingestor, resume_store,
-                               index_run_store, id_gen,      clock,    config};
+        mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
+                               decision_store, id_gen,      clock,    config};
         mcp::run_server_loop(ctx);
       } catch (const std::exception& e) {
         std::cerr << "Failed to connect to Redis: " << e.what() << "\n";
@@ -150,8 +152,8 @@ int main(int argc, char* argv[]) {
       }
     } else {
       interaction::InMemoryInteractionCoordinator coordinator;
-      mcp::ServerContext ctx{services,        coordinator, ingestor, resume_store,
-                             index_run_store, id_gen,      clock,    config};
+      mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
+                             decision_store, id_gen,      clock,    config};
       mcp::run_server_loop(ctx);
     }
 
@@ -168,7 +170,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto mem_db = mem_db_result.value();
-    auto mem_schema_result = mem_db->ensure_schema_v4();
+    auto mem_schema_result = mem_db->ensure_schema_v5();
     if (!mem_schema_result.has_value()) {
       std::cerr << "Failed to initialize in-memory schema: " << mem_schema_result.error() << "\n";
       return 1;
@@ -180,6 +182,7 @@ int main(int argc, char* argv[]) {
     storage::InMemoryAuditLog audit_log;
     storage::sqlite::SqliteResumeStore resume_store(mem_db);
     storage::sqlite::SqliteIndexRunStore index_run_store(mem_db);
+    storage::sqlite::SqliteDecisionStore decision_store(mem_db);
 
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
@@ -187,8 +190,8 @@ int main(int argc, char* argv[]) {
                             audit_log, vector_index,     embedding_provider};
 
     interaction::InMemoryInteractionCoordinator coordinator;
-    mcp::ServerContext ctx{services,        coordinator, ingestor, resume_store,
-                           index_run_store, id_gen,      clock,    config};
+    mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
+                           decision_store, id_gen,      clock,    config};
     run_server_loop(ctx);
   }
 
