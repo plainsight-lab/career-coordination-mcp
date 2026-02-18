@@ -3,6 +3,9 @@
 /build-vcpkg/
 /vcpkg_installed/
 
+# CMake/CTest output
+/Testing/
+
 # Build artifacts (if generated at root)
 CMakeCache.txt
 CMakeFiles/
@@ -22,8 +25,9 @@ compile_commands.json
 # macOS
 .DS_Store
 
-# Prompt files
+# Prompt files and ad-hoc dev test files
 prompt.md
+test_resume.md
 
 # Data directories (configurable paths for SQLite, LanceDB, etc.)
 /data/
