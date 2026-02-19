@@ -57,12 +57,12 @@ class InMemoryResumeStore final : public ingest::IResumeStore {
   std::map<std::string, ingest::IngestedResume> resumes_;
 };
 
-// Open an in-memory SQLite DB with schema v4.
+// Open an in-memory SQLite DB with schema v6 (chained: v1→v6).
 static std::shared_ptr<storage::sqlite::SqliteDb> make_db() {
   auto result = storage::sqlite::SqliteDb::open(":memory:");
   REQUIRE(result.has_value());
   auto db = result.value();
-  REQUIRE(db->ensure_schema_v4().has_value());
+  REQUIRE(db->ensure_schema_v6().has_value());
   return db;
 }
 
@@ -320,4 +320,98 @@ TEST_CASE("index-build scope=all indexes atoms+resumes+opps", "[indexing][pipeli
   CHECK(vector_index.get("atom-001").has_value());
   CHECK(vector_index.get("resume:resume-001").has_value());
   CHECK(vector_index.get("opp:opp-001").has_value());
+}
+
+// ---------------------------------------------------------------------------
+// v0.4 Slice 1 — Drift detection and determinism tests
+// ---------------------------------------------------------------------------
+
+// Test B: Drift detection works when run_id increments across simulated invocations.
+// A new SqliteIndexRunStore on the same DB simulates a fresh CLI invocation that
+// previously would have reset DeterministicIdGenerator and always produced run-0.
+TEST_CASE("index-build drift detection works across separate run_store instances",
+          "[indexing][pipeline]") {
+  auto db = make_db();
+  storage::InMemoryAtomRepository atom_repo;
+  InMemoryResumeStore resume_store;
+  storage::InMemoryOpportunityRepository opp_repo;
+  vector::InMemoryEmbeddingIndex vector_index;
+  embedding::DeterministicStubEmbeddingProvider embedding_provider(128);
+  storage::InMemoryAuditLog audit_log;
+  core::FixedClock clock("2026-01-01T00:00:00Z");
+
+  atom_repo.upsert({core::AtomId{"atom-001"}, "cpp", "C++", "Claim", {"cpp20"}, true, {}});
+
+  auto config = default_config("atoms");
+
+  // First "invocation": fresh generator, fresh store — simulates first CLI run.
+  {
+    storage::sqlite::SqliteIndexRunStore run_store(db);
+    core::DeterministicIdGenerator id_gen;
+    auto first =
+        indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store, vector_index,
+                                  embedding_provider, audit_log, id_gen, clock, config);
+    CHECK(first.indexed_count == 1);
+    CHECK(first.skipped_count == 0);
+    CHECK(first.run_id == "run-1");
+  }
+
+  // Second "invocation": fresh generator, fresh store on same DB — simulates second CLI run.
+  // Without the fix this would always produce run-0, overwrite the prior completed run,
+  // and re-index everything. With the fix, run-2 is allocated and drift detection works.
+  {
+    storage::sqlite::SqliteIndexRunStore run_store(db);
+    core::DeterministicIdGenerator id_gen;
+    auto second =
+        indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store, vector_index,
+                                  embedding_provider, audit_log, id_gen, clock, config);
+    CHECK(second.indexed_count == 0);  // unchanged source — correctly skipped
+    CHECK(second.skipped_count == 1);
+    CHECK(second.stale_count == 0);
+    CHECK(second.run_id == "run-2");  // unique ID — does not overwrite run-1
+  }
+}
+
+// Test C: Artifact source_hash and vector_hash are deterministic — identical canonical
+// text produces identical hashes regardless of which run or database recorded them.
+// Uses two independent in-memory databases to verify the invariant without depending
+// on drift detection ordering between same-timestamp runs.
+TEST_CASE("index-build artifact hashes are deterministic across independent databases",
+          "[indexing][pipeline]") {
+  // Helper: run a single index-build on a fresh in-memory database and return the entries.
+  auto run_pipeline = [](const std::string& claim) {
+    auto db = make_db();
+    storage::sqlite::SqliteIndexRunStore run_store(db);
+    storage::InMemoryAtomRepository atom_repo;
+    InMemoryResumeStore resume_store;
+    storage::InMemoryOpportunityRepository opp_repo;
+    vector::InMemoryEmbeddingIndex vector_index;
+    embedding::DeterministicStubEmbeddingProvider embedding_provider(128);
+    storage::InMemoryAuditLog audit_log;
+    core::DeterministicIdGenerator id_gen;
+    core::FixedClock clock("2026-01-01T00:00:00Z");
+
+    atom_repo.upsert({core::AtomId{"atom-001"}, "cpp", "C++", claim, {}, true, {}});
+    auto result = indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store,
+                                            vector_index, embedding_provider, audit_log, id_gen,
+                                            clock, default_config("atoms"));
+    return run_store.get_entries_for_run(result.run_id);
+  };
+
+  // Run once with content A, once with content B, once with content A again.
+  // The first and third runs must produce byte-identical hashes for the same text.
+  const auto entries_a1 = run_pipeline("Deterministic claim for testing");
+  const auto entries_b = run_pipeline("Different claim");
+  const auto entries_a2 = run_pipeline("Deterministic claim for testing");
+
+  REQUIRE(entries_a1.size() == 1);
+  REQUIRE(entries_b.size() == 1);
+  REQUIRE(entries_a2.size() == 1);
+
+  // Same canonical text → same hashes (functional determinism).
+  CHECK(entries_a1[0].source_hash == entries_a2[0].source_hash);
+  CHECK(entries_a1[0].vector_hash == entries_a2[0].vector_hash);
+
+  // Different canonical text → different source_hash (collision resistance sanity check).
+  CHECK(entries_a1[0].source_hash != entries_b[0].source_hash);
 }

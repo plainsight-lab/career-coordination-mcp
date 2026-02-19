@@ -3,6 +3,8 @@
 #include "ccmcp/indexing/index_run.h"
 
 #include <sqlite3.h>
+#include <stdexcept>
+#include <string>
 
 namespace ccmcp::storage::sqlite {
 
@@ -203,6 +205,56 @@ indexing::IndexRun SqliteIndexRunStore::row_to_run(sqlite3_stmt* stmt) const {
   run.summary_json = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
 
   return run;
+}
+
+std::string SqliteIndexRunStore::next_index_run_id() {
+  // Atomically increment the 'index_run' counter and return "run-N".
+  //
+  // BEGIN IMMEDIATE acquires a write lock before any reads, which prevents two
+  // processes from reading the same counter value simultaneously on a shared
+  // file-based database.
+  char* err_msg = nullptr;
+
+  if (sqlite3_exec(db_->connection(), "BEGIN IMMEDIATE", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    const std::string msg = err_msg != nullptr ? err_msg : "unknown error";
+    sqlite3_free(err_msg);
+    throw std::runtime_error("next_index_run_id: failed to begin transaction: " + msg);
+  }
+
+  // Insert with value=1 if the row is absent; otherwise increment the existing value.
+  const char* upsert_sql = R"(
+    INSERT INTO id_counters (name, value) VALUES ('index_run', 1)
+    ON CONFLICT(name) DO UPDATE SET value = value + 1
+  )";
+  if (sqlite3_exec(db_->connection(), upsert_sql, nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    const std::string msg = err_msg != nullptr ? err_msg : "unknown error";
+    sqlite3_free(err_msg);
+    sqlite3_exec(db_->connection(), "ROLLBACK", nullptr, nullptr, nullptr);
+    throw std::runtime_error("next_index_run_id: failed to increment counter: " + msg);
+  }
+
+  // Read the updated value.
+  const char* select_sql = "SELECT value FROM id_counters WHERE name = 'index_run'";
+  PreparedStatement stmt(db_->connection(), select_sql);
+  if (!stmt.is_valid()) {
+    sqlite3_exec(db_->connection(), "ROLLBACK", nullptr, nullptr, nullptr);
+    throw std::runtime_error("next_index_run_id: failed to prepare select: " + stmt.error());
+  }
+
+  if (sqlite3_step(stmt.get()) != SQLITE_ROW) {
+    sqlite3_exec(db_->connection(), "ROLLBACK", nullptr, nullptr, nullptr);
+    throw std::runtime_error("next_index_run_id: counter row missing after upsert");
+  }
+
+  const long long value = sqlite3_column_int64(stmt.get(), 0);
+
+  if (sqlite3_exec(db_->connection(), "COMMIT", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    const std::string msg = err_msg != nullptr ? err_msg : "unknown error";
+    sqlite3_free(err_msg);
+    throw std::runtime_error("next_index_run_id: failed to commit: " + msg);
+  }
+
+  return "run-" + std::to_string(value);
 }
 
 // Column order for SELECT * FROM index_entries:

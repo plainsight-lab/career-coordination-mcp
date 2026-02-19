@@ -83,7 +83,7 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
   }
 
   auto db = db_result.value();
-  auto schema_result = db->ensure_schema_v4();
+  auto schema_result = db->ensure_schema_v6();
   if (!schema_result.has_value()) {
     std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
     return 1;

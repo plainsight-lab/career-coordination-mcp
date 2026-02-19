@@ -54,7 +54,7 @@ IndexBuildResult run_index_build(storage::IAtomRepository& atoms, ingest::IResum
                                  embedding::IEmbeddingProvider& embedding_provider,
                                  storage::IAuditLog& audit_log, core::IIdGenerator& id_gen,
                                  core::IClock& clock, const IndexBuildConfig& config) {
-  const std::string run_id = id_gen.next("run");
+  const std::string run_id = run_store.next_index_run_id();
   const std::string started_at = clock.now_iso8601();
 
   // Create run record in kRunning state.

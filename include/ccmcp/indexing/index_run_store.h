@@ -42,6 +42,13 @@ class IIndexRunStore {
       const std::string& provider_id, const std::string& model_id,
       const std::string& prompt_version) const = 0;
 
+  // Atomically allocate the next run_id from the persistent monotonic counter.
+  // Returns "run-N" where N is a 1-based integer that increments with each call.
+  // The counter is backed by the id_counters table (schema v6) and survives
+  // process restarts, guaranteeing unique, ordered run IDs across CLI invocations.
+  // Throws std::runtime_error if the id_counters table is absent (schema v6 not applied).
+  [[nodiscard]] virtual std::string next_index_run_id() = 0;
+
  protected:
   IIndexRunStore() = default;
   IIndexRunStore(const IIndexRunStore&) = default;

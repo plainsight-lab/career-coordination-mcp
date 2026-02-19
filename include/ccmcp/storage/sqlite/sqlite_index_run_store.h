@@ -31,6 +31,8 @@ class SqliteIndexRunStore final : public indexing::IIndexRunStore {
       const std::string& provider_id, const std::string& model_id,
       const std::string& prompt_version) const override;
 
+  [[nodiscard]] std::string next_index_run_id() override;
+
  private:
   std::shared_ptr<SqliteDb> db_;
 

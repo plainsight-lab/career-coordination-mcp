@@ -6,12 +6,12 @@
 
 using namespace ccmcp;
 
-// Helper: open an in-memory DB with schema v4 applied.
+// Helper: open an in-memory DB with schema v6 applied (chained: v1→v6).
 static std::shared_ptr<storage::sqlite::SqliteDb> make_db() {
   auto result = storage::sqlite::SqliteDb::open(":memory:");
   REQUIRE(result.has_value());
   auto db = result.value();
-  auto schema = db->ensure_schema_v4();
+  auto schema = db->ensure_schema_v6();
   REQUIRE(schema.has_value());
   return db;
 }
@@ -195,4 +195,48 @@ TEST_CASE("get_last_source_hash matches provider/model/prompt combination",
   // Query for an unknown provider returns nullopt.
   auto result_c = store.get_last_source_hash("atom-x", "atom", "provider-unknown", "model-1", "v1");
   CHECK(!result_c.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// v0.4 Slice 1 — Monotonic counter tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("next_index_run_id returns run-1 on first call", "[indexing][sqlite][index-run-store]") {
+  auto db = make_db();
+  storage::sqlite::SqliteIndexRunStore store(db);
+
+  const std::string id = store.next_index_run_id();
+  CHECK(id == "run-1");
+}
+
+TEST_CASE("next_index_run_id is strictly monotonically increasing",
+          "[indexing][sqlite][index-run-store]") {
+  auto db = make_db();
+  storage::sqlite::SqliteIndexRunStore store(db);
+
+  const std::string id1 = store.next_index_run_id();
+  const std::string id2 = store.next_index_run_id();
+  const std::string id3 = store.next_index_run_id();
+
+  CHECK(id1 == "run-1");
+  CHECK(id2 == "run-2");
+  CHECK(id3 == "run-3");
+}
+
+TEST_CASE("next_index_run_id counter persists across separate store instances on the same db",
+          "[indexing][sqlite][index-run-store]") {
+  auto db = make_db();
+
+  // First store instance allocates run-1.
+  {
+    storage::sqlite::SqliteIndexRunStore store1(db);
+    CHECK(store1.next_index_run_id() == "run-1");
+  }
+
+  // Second store instance on the same connection continues from run-2.
+  // This simulates the MCP server allocating a second run in the same session.
+  {
+    storage::sqlite::SqliteIndexRunStore store2(db);
+    CHECK(store2.next_index_run_id() == "run-2");
+  }
 }

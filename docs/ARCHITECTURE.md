@@ -165,8 +165,8 @@ Produces and persists embeddings with full provenance.
 - Entry point: `run_index_build()` in `app_service`
 - Drift detection: compares `source_hash` (stable hash of canonical text) against last completed run for the same provider/model/prompt scope. Skips unchanged artifacts; re-indexes stale ones.
 - Provenance: `index_runs` table (per-run metadata) + `index_entries` table (per-artifact hashes).
-- SQLite schema v4 (`index_runs`, `index_entries` tables).
-- Known limitation (WARN-001): CLI `index-build` resets `DeterministicIdGenerator` on each invocation, defeating drift detection. MCP server path (shared generator across requests) is unaffected.
+- Run identity: `next_index_run_id()` on `IIndexRunStore` allocates monotonically increasing run IDs (`run-1`, `run-2`, …) from the `id_counters` SQLite table (schema v6). Persistent across process restarts; fixes WARN-001.
+- SQLite schema v4 (`index_runs`, `index_entries` tables) + schema v6 (`id_counters` table).
 - See: [INDEXING.md](INDEXING.md)
 
 ## Outreach State Machine
@@ -266,8 +266,9 @@ Single file (e.g., `career.db`). Schema migrations are chained and idempotent.
 | v3 | resume_token_ir | v0.3 Slice 2 |
 | v4 | index_runs, index_entries | v0.3 Slice 4 |
 | v5 | decision_records | v0.3 Slice 6 |
+| v6 | id_counters | v0.4 Slice 1 |
 
-`ensure_schema_v5()` applies all migrations in sequence on startup. All are safe to run on an existing database.
+`ensure_schema_v6()` applies all migrations in sequence on startup. All are safe to run on an existing database.
 
 ## Vector Store — Derived, Separate File
 

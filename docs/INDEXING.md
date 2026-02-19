@@ -21,7 +21,26 @@ Embeddings are **derived artifacts**. They are never canonical.
 
 ---
 
-## 2. Schema v4 — Provenance Tables
+## 2. Schema v4 + v6 — Provenance and Identity Tables
+
+Schema v4 adds the embedding provenance tables; schema v6 adds the monotonic counter table.
+All are applied via `ensure_schema_v6()` (chained: v1 → v4 → v5 → v6).
+
+### `id_counters` (schema v6)
+
+Persistent monotonic counter backing `next_index_run_id()`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `name` | TEXT PK | Counter name — `'index_run'` for run IDs |
+| `value` | INTEGER | Current counter value; incremented atomically per allocation |
+
+**Invariant:** `value` is 1-based and strictly monotonically increasing. It is never reset.
+Each call to `next_index_run_id()` increments `value` by 1 and returns `"run-" + value`.
+
+---
+
+## 2a. Schema v4 — Provenance Tables
 
 Schema v4 adds two tables to the main SQLite database (applied via `ensure_schema_v4()`):
 
@@ -55,6 +74,25 @@ Records one embedding per (run, artifact).
 
 Primary key: `(run_id, artifact_type, artifact_id)`.
 Index on `(artifact_type, artifact_id)` for drift detection queries.
+
+---
+
+## 2b. Run ID Semantics
+
+Run IDs are allocated from the `id_counters` SQLite table via `IIndexRunStore::next_index_run_id()`.
+
+**Format:** `"run-N"` where N is a 1-based integer starting from 1.
+
+**Invariant:** The counter is persistent across process boundaries. Two CLI invocations on
+the same database always produce distinct run IDs (`run-1`, `run-2`, …). The counter is never
+reset by process restart, preventing the WARN-001 class of bug where the prior completed run
+record was overwritten before drift detection could query it.
+
+**Atomicity:** The increment is wrapped in `BEGIN IMMEDIATE ... COMMIT` for multi-process safety
+on file-based databases.
+
+**Schema requirement:** `next_index_run_id()` requires the `id_counters` table from schema v6.
+Callers must apply `ensure_schema_v6()` before using `SqliteIndexRunStore`.
 
 ---
 
@@ -176,11 +214,13 @@ Default values if flags are omitted:
 
 ---
 
-## 12. Design Constraints (Unchanged)
+## 12. Design Constraints
 
 - **Matcher scoring formula**: unchanged.
 - **`IEmbeddingProvider` interface**: unchanged.
 - **`IEmbeddingIndex` interface**: unchanged.
 - **`Services` struct**: unchanged.
-- **Schemas v1–v3**: unchanged. Schema v4 is additive.
-- **All existing CLI commands**: unchanged.
+- **Schemas v1–v5**: unchanged. Schema v6 is additive (adds `id_counters` table only).
+- **All existing CLI commands**: unchanged behavior; `index-build` now applies `ensure_schema_v6()`.
+- **`run_index_build()` signature**: unchanged — `id_gen` is still required for audit event IDs.
+- **`get_last_source_hash()` semantics**: unchanged — queries completed runs ordered by `completed_at DESC`.

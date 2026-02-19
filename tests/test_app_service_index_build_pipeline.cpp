@@ -46,7 +46,7 @@ struct IndexBuildPipelineFixture {
       : db([] {
           auto r = storage::sqlite::SqliteDb::open(":memory:");
           REQUIRE(r.has_value());
-          auto s = r.value()->ensure_schema_v4();
+          auto s = r.value()->ensure_schema_v6();
           REQUIRE(s.has_value());
           return r.value();
         }()),
