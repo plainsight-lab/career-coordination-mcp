@@ -346,6 +346,32 @@ opportunity_id
 
 ---
 
+# Dependency Governance (v0.4)
+
+Third-party dependencies are managed through [vcpkg](https://github.com/microsoft/vcpkg)
+in manifest mode. The `vcpkg.json` at the repository root declares all direct dependencies.
+The `builtin-baseline` field pins the vcpkg registry to a specific commit, guaranteeing
+that every clean checkout resolves the exact same dependency graph.
+
+```json
+"builtin-baseline": "e6ebaa9c3ca8fca90c63af62fc895c2486609580"
+```
+
+**Invariants:**
+
+- Dependency resolution is deterministic: same baseline → same package versions.
+- `vcpkg_installed/` is excluded from version control (`.gitignore`). Artifacts are
+  always re-resolved from the pinned baseline, never from committed binaries.
+- A build that cannot verify the baseline commit in the local vcpkg registry **fails fast**
+  with an actionable error — it never silently resolves a different graph.
+- Updating the baseline is a cross-cutting change and requires explicit intent declaration,
+  full test verification, and an atomic commit.
+
+The build entrypoint is `scripts/build.sh`, which performs baseline verification before
+configuring CMake. See [DEVELOPMENT.md](DEVELOPMENT.md) for the clean-room build procedure.
+
+---
+
 # Non-Goals
 
 - Autonomous emailing / messaging

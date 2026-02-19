@@ -2,6 +2,7 @@
   "name": "career-coordination-mcp",
   "version-string": "0.1.0",
   "description": "Deterministic, auditable job search coordination scaffold",
+  "builtin-baseline": "e6ebaa9c3ca8fca90c63af62fc895c2486609580",
   "dependencies": [
     "nlohmann-json",
     "fmt",

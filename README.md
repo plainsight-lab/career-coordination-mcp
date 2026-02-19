@@ -150,15 +150,15 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 175 deterministic unit tests
+├── tests/                 # 184 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
-## Current Phase — v0.3 Complete
+## Current Phase — v0.4 In Progress
 
-**Status:** ✅ Released — all 6 slices implemented, tested, and passing.
-**Tests:** 175 cases · 1183 assertions · 0 failures · 7 skipped (Redis + LanceDB opt-in)
-**Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–3 merged).
+**Tests:** 184 cases · 1236 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
 
@@ -196,13 +196,38 @@ This is governance infrastructure, not an automation toy.
 ### Prerequisites
 
 - CMake 3.21+
-- C++20 compatible compiler (Clang, GCC, or MSVC)
-- vcpkg installed at `~/vcpkg` or `$VCPKG_ROOT`
+- C++20 compatible compiler (Clang 14+, GCC 12+, or MSVC 19.30+)
+- vcpkg at commit `e6ebaa9c3ca8fca90c63af62fc895c2486609580` or later (`$VCPKG_ROOT` or `~/vcpkg`)
+- Python 3 (for baseline verification in `scripts/build.sh`)
 - (Optional) clang-format and clang-tidy 14+ for code quality
+
+### Dependency Governance
+
+Dependency versions are pinned via the `builtin-baseline` field in `vcpkg.json`. This
+guarantees that a clean checkout resolves the exact same package graph regardless of
+when or where the build runs. The build script verifies the baseline before configuring
+CMake and fails fast if the local vcpkg installation is older than the pinned commit.
+
+`vcpkg_installed/` is excluded from version control — artifacts are always resolved
+from the pinned baseline, never from committed binaries.
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full dependency governance details,
+clean-room validation steps, and baseline update procedure.
 
 ### Build Instructions
 
-The project uses vcpkg manifest mode for deterministic dependency resolution.
+```bash
+# Recommended: deterministic build with baseline verification
+./scripts/build.sh
+
+# Build without tests
+./scripts/build.sh --skip-tests
+
+# Clean build (wipe build dir, then build and test)
+./scripts/build.sh --clean
+```
+
+Or manually:
 
 ```bash
 # Configure with vcpkg toolchain
@@ -210,7 +235,7 @@ cmake -S . -B build-vcpkg \
   -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/vcpkg.cmake
 
 # Build
-cmake --build build-vcpkg
+cmake --build build-vcpkg --parallel
 
 # Run CLI demo
 ./build-vcpkg/apps/ccmcp_cli/ccmcp_cli
@@ -219,11 +244,14 @@ cmake --build build-vcpkg
 ./build-vcpkg/tests/ccmcp_tests
 ```
 
-Dependencies (resolved automatically via vcpkg.json):
-- nlohmann-json (JSON serialization)
-- fmt (formatting)
-- Catch2 (testing)
-- sqlite3 (persistence layer)
+Dependencies (pinned via vcpkg.json `builtin-baseline`, resolved automatically):
+- nlohmann-json 3.12.0 (JSON serialization)
+- fmt 12.1.0 (formatting)
+- Catch2 3.12.0 (testing)
+- sqlite3 3.51.2 (persistence layer)
+- redis-plus-plus 1.3.15 (interaction coordination)
+- libzip 1.11.4 (DOCX resume ingestion)
+- pugixml 1.15 (DOCX resume ingestion)
 
 ### Code Quality
 
@@ -308,7 +336,7 @@ The engine can integrate LLM providers later, but:
 
 **Slice 5 — MCP Server Hardening + Persistence Wiring**
 - All six backends wired in `main.cpp`: SQLite stores, Redis coordinator, LanceDB vector index
-- Config flags: `--db`, `--redis`, `--vector-backend inmemory|lancedb`, `--lancedb-path`, `--matching-strategy`
+- Config flags: `--db`, `--redis`, `--vector-backend inmemory|sqlite`, `--vector-db-path`, `--matching-strategy`
 - Two new MCP tools: `ingest_resume`, `index_build`
 - `match_opportunity` gains optional `resume_id` for audit traceability
 - `ServerContext` extended with `IResumeIngestor`, `IResumeStore`, `IIndexRunStore`
@@ -329,11 +357,30 @@ The engine can integrate LLM providers later, but:
 - Deterministic JSON serialization (alphabetically sorted keys via `nlohmann::json` std::map default)
 - See [DECISION_RECORDS.md](docs/DECISION_RECORDS.md)
 
-### v0.4+ (Future)
+### v0.4 (In Progress)
+
+**Slice 1 — Deterministic Index Run Identity** ✅
+- Schema v6 (`id_counters` table): monotonically increasing run IDs persistent across restarts
+- `IIndexRunStore::next_index_run_id()` sourced from SQLite counter (fixes WARN-001)
+- Drift detection correctness: run IDs no longer collide across CLI invocations
+
+**Slice 2 — Vector Backend Semantics Normalization** ✅
+- `VectorBackend` enum: shared authoritative vocabulary for `--vector-backend` flag
+- Aligned CLI and MCP server to identical valid values (`inmemory`, `sqlite`)
+- MCP server `--lancedb-path` renamed to `--vector-db-path`; `lancedb` value now fails fast
+- Removed silent aliasing: flag → implementation wiring is explicit and exhaustive
+
+**Slice 3 — Reproducible Dependency Resolution** ✅
+- `builtin-baseline` pinned in `vcpkg.json` — same dependency graph on every clean checkout
+- `scripts/build.sh` — deterministic build entrypoint with baseline verification
+- `docs/DEVELOPMENT.md` — clean-room build procedure and dependency governance
+- `docs/ARCHITECTURE.md` — Dependency Governance section
+
+**Planned:**
 - Containerization (enables Poppler/MuPDF for real PDF extraction)
 - Resume composition workflows (atom selection → draft → validation → output)
 - Structured resume patching (constitutional diff and patch operations)
-- Real LanceDB C++ SDK integration (currently implemented via `SqliteEmbeddingIndex`)
+- Real LanceDB C++ SDK integration (currently `SqliteEmbeddingIndex` fills this slot)
 - Token validation rule packs
 - Real embedding provider integration (OpenAI, local models)
 
