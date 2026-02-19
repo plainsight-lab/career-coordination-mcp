@@ -10,7 +10,7 @@ json handle_initialize(const JsonRpcRequest& /*req*/, ServerContext& /*ctx*/) {
   return json{
       {"protocolVersion", "2024-11-05"},
       {"capabilities", {{"tools", json::object()}}},
-      {"serverInfo", {{"name", "career-coordination-mcp"}, {"version", "0.2.0"}}},
+      {"serverInfo", {{"name", "career-coordination-mcp"}, {"version", "0.3.0"}}},
   };
 }
 

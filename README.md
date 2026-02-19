@@ -154,24 +154,28 @@ career-coordination-mcp/
 └── docs/                  # Architecture, governance, and design specs
 ```
 
-## Current Scope (v0.3 — Complete)
+## Current Phase — v0.3 Complete
+
+**Status:** ✅ Released — all 6 slices implemented, tested, and passing.
+**Tests:** 175 cases · 1183 assertions · 0 failures · 7 skipped (Redis + LanceDB opt-in)
+**Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
+
+### Feature Matrix
+
+| Feature | Status | Persistence | CLI | MCP Tool |
+|---------|--------|-------------|-----|----------|
+| Lexical matching | ✅ | SQLite | `match` (demo) | `match_opportunity` |
+| Hybrid (lexical + embedding) matching | ✅ | SQLite + vector | — | `match_opportunity` |
+| Constitutional validation | ✅ | — | — | `match_opportunity` |
+| Audit log (append-only, trace-queryable) | ✅ | SQLite | — | `get_audit_trace` |
+| Interaction state machine (FSM) | ✅ | SQLite + Redis | — | `interaction_apply_event` |
+| Resume ingestion | ✅ | SQLite | `ingest-resume` | `ingest_resume` |
+| Token IR generation | ✅ | SQLite | `tokenize-resume` | — |
+| Embedding index build/rebuild | ✅ | SQLite + vector | `index-build` | `index_build` |
+| Drift detection (source hash comparison) | ✅ (within session) | SQLite | — | — |
+| Decision records (match provenance) | ✅ | SQLite | `get-decision`, `list-decisions` | `get_decision`, `list_decisions` |
 
 All v0.3 slices are implemented and passing. See [Roadmap](#roadmap) below for full details.
-
-**Implemented capabilities:**
-- Deterministic lexical + hybrid (lexical + embedding) matching
-- Constitutional validation engine with rule packs and machine-readable reports
-- Append-only audit log with full trace retrieval
-- Outreach interaction state machine (FSM) with idempotent transitions
-- SQLite persistence for atoms, opportunities, interactions, audit log, resumes, index runs, and decision records
-- Redis-backed interaction coordination
-- Resume ingestion pipeline (Markdown, TXT, DOCX stub, PDF stub) with hygiene normalization
-- Token IR generation with constitutional validation
-- SQLite-backed embedding vector index with persistent storage
-- Embedding lifecycle: deterministic index build/rebuild with drift detection (source hash comparison)
-- Decision records: first-class queryable provenance artifacts capturing the full "why" of each match decision (per-requirement atom attribution, retrieval stats, validation summary)
-- MCP server exposing all tools with persistent backend wiring
-- CLI commands: `ingest-resume`, `tokenize-resume`, `index-build`, `match`, `get-decision`, `list-decisions`
 
 ---
 

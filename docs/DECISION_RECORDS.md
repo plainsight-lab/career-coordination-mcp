@@ -214,12 +214,16 @@ match_opportunity (MCP tool)
 Decision records are not automatically regenerated on schema upgrade. They represent
 the provenance of past pipeline runs and must not be modified retroactively.
 
-If a rebuild is required (e.g., after a schema migration error), use:
+If a rebuild is required (e.g., after a schema migration error), trigger a new match
+pipeline run:
+
 ```bash
-# Re-run the match pipeline — a new DecisionRecord will be created for the new run.
-ccmcp_cli match --db career.db
-# or via MCP:
+# Via MCP server (creates a new DecisionRecord each time):
 match_opportunity { "opportunity_id": "<id>" }
 ```
+
+> **Note:** The `ccmcp_cli match` command is a hardcoded demo fixture that does **not**
+> call `record_match_decision()`. Decision records are only created via the MCP server's
+> `match_opportunity` handler.
 
 Decision records for prior runs remain queryable unless the table is explicitly cleared.

@@ -95,8 +95,9 @@ All flags are optional. The server prints explicit `WARNING:` lines on stderr fo
 
 When `--db` is provided:
 - `SqliteAtomRepository`, `SqliteOpportunityRepository`, `SqliteInteractionRepository`,
-  `SqliteAuditLog`, `SqliteResumeStore`, `SqliteIndexRunStore` are all created on the same file.
-- Schema v4 is applied on startup (`ensure_schema_v4()` chains migrations v1→v4; all are idempotent).
+  `SqliteAuditLog`, `SqliteResumeStore`, `SqliteIndexRunStore`, `SqliteDecisionStore`
+  are all created on the same file.
+- Schema v5 is applied on startup (`ensure_schema_v5()` chains migrations v1→v5; all are idempotent).
 
 When `--db` is **not** provided:
 - Atom/opportunity/interaction repositories and audit log use in-memory implementations.
@@ -144,6 +145,7 @@ Run the full matching + validation pipeline for an opportunity.
 ```json
 {
   "trace_id": "trace-abc-123",
+  "decision_id": "decision-xyz-001",
   "match_report": {
     "opportunity_id": "opp-123",
     "overall_score": 0.75,
@@ -157,7 +159,7 @@ Run the full matching + validation pipeline for an opportunity.
 }
 ```
 
-**Audit Events Emitted:** `RunStarted`, `MatchCompleted`, `ValidationCompleted`, `RunCompleted`
+**Audit Events Emitted:** `RunStarted`, `MatchCompleted`, `ValidationCompleted`, `RunCompleted`, `DecisionRecorded`
 
 ---
 
@@ -352,7 +354,7 @@ The server implements **JSON-RPC 2.0** over **stdio**.
   "result": {
     "protocolVersion": "2024-11-05",
     "capabilities": {"tools": {}},
-    "serverInfo": {"name": "career-coordination-mcp", "version": "0.2.0"}
+    "serverInfo": {"name": "career-coordination-mcp", "version": "0.3.0"}
   }
 }
 ```
@@ -363,7 +365,7 @@ The server implements **JSON-RPC 2.0** over **stdio**.
 {"jsonrpc": "2.0", "id": "2", "method": "tools/list", "params": {}}
 ```
 
-Returns all six tool descriptors with their JSON Schema `inputSchema`.
+Returns all eight tool descriptors with their JSON Schema `inputSchema`.
 
 ### Call Tool
 
@@ -449,7 +451,7 @@ The MCP server delegates **all business logic** to `app_service`. This ensures:
 ### Services vs. ServerContext
 
 - `core::Services` holds the six foundational service references (atoms, opportunities, interactions, audit log, vector index, embedding provider). It is **unchanged** across all slices to avoid breaking test files.
-- `mcp::ServerContext` extends `Services` with the three new references introduced in v0.3: `IResumeIngestor`, `IResumeStore`, `IIndexRunStore`. Handlers access these via the context.
+- `mcp::ServerContext` extends `Services` with four additional references introduced in v0.3: `IResumeIngestor`, `IResumeStore`, `IIndexRunStore`, and `IDecisionStore`. Handlers access these via the context.
 
 ---
 
@@ -469,4 +471,4 @@ The MCP server delegates **all business logic** to `app_service`. This ensures:
 - `apps/mcp_server/handlers/` — Per-tool handler implementations
 - `src/app/app_service.cpp` — Pipeline business logic
 - `docs/INDEXING.md` — Index build and drift detection design
-- `docs/V0_3_ARCHITECTURE.md` — v0.3 architecture overview
+- `docs/DECISION_RECORDS.md` — Decision record schema, API, and storage architecture
