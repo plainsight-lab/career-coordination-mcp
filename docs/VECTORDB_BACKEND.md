@@ -1,4 +1,4 @@
-# LanceDB Backend — v0.3 Slice 3
+# SQLite Vector Backend (formerly "LanceDB slot") — v0.3 Slice 3, updated v0.4 Slice 2
 
 ## Status
 
@@ -63,6 +63,9 @@ The database is created automatically on first open. The schema is applied via
 ## CLI Flags
 
 ### MCP Server
+
+Valid `--vector-backend` values: `inmemory` (default, ephemeral) | `sqlite` (persistent).
+`lancedb` is reserved and rejected at startup with an actionable message.
 
 ```bash
 # Default: in-memory vector index (no persistence)
@@ -173,8 +176,9 @@ When a C++ LanceDB SDK becomes available in vcpkg:
 2. Add `find_package(lancedb CONFIG REQUIRED)` to `CMakeLists.txt`.
 3. Implement `LanceDBEmbeddingIndex` using the real SDK. The interface contract
    (`upsert`, `query`, `get`) is already defined and stable.
-4. Wire `--vector-backend lancedb` to `LanceDBEmbeddingIndex` instead of
-   `SqliteEmbeddingIndex`.
+4. In `apps/mcp_server/main.cpp` and `apps/ccmcp_cli/commands/index_build.cpp`, wire
+   the `VectorBackend::kLanceDb` switch arm to construct `LanceDBEmbeddingIndex`
+   instead of throwing or doing nothing. Remove the fail-fast error.
 5. Migrate existing vector data if needed (the schema is compatible in structure; a
    rebuild from canonical sources is the safest migration path since vectors are derived).
 6. Keep `SqliteEmbeddingIndex` available as a lightweight fallback that requires no

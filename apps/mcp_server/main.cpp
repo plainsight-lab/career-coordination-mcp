@@ -20,6 +20,7 @@
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
 #include "ccmcp/vector/inmemory_embedding_index.h"
 #include "ccmcp/vector/sqlite_embedding_index.h"
+#include "ccmcp/vector/vector_backend.h"
 
 #include <nlohmann/json.hpp>
 
@@ -41,9 +42,19 @@ int main(int argc, char* argv[]) {
   auto config = mcp::parse_args(argc, argv);
 
   // Validate config before emitting any startup output so no partial messages appear on error.
-  if (config.vector_backend == "lancedb" && !config.lancedb_path.has_value()) {
-    std::cerr << "Error: --lancedb-path <dir> is required when --vector-backend lancedb\n";
-    return 1;
+  switch (config.vector_backend) {
+    case vector::VectorBackend::kSqlite:
+      if (!config.vector_db_path.has_value()) {
+        std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
+        return 1;
+      }
+      break;
+    case vector::VectorBackend::kLanceDb:
+      std::cerr << "Error: --vector-backend lancedb is reserved and not yet implemented.\n"
+                   "       Use --vector-backend sqlite for persistent vector storage.\n";
+      return 1;
+    case vector::VectorBackend::kInMemory:
+      break;
   }
 
   // ── Startup diagnostic block ──────────────────────────────────────────────
@@ -69,17 +80,20 @@ int main(int argc, char* argv[]) {
                  "         Pass --redis <uri> to enable durable coordination.\n";
   }
 
-  if (config.vector_backend == "lancedb") {
-    std::cerr << "Vector:      LanceDB (SQLite) -- " << config.lancedb_path.value()
-              << "/vectors.db\n";
-  } else {
-    std::cerr
-        << "WARNING: No --vector-backend lancedb specified. Running with EPHEMERAL in-memory "
-           "vector "
-           "index.\n"
-           "         Embedding index will be LOST on process exit. Hybrid matching will require\n"
-           "         re-embedding on restart. Pass --vector-backend lancedb --lancedb-path "
-           "<dir>.\n";
+  switch (config.vector_backend) {
+    case vector::VectorBackend::kSqlite:
+      std::cerr << "Vector:      SQLite -- " << config.vector_db_path.value() << "/vectors.db\n";
+      break;
+    case vector::VectorBackend::kInMemory:
+      std::cerr << "WARNING: No --vector-backend sqlite specified. Running with EPHEMERAL "
+                   "in-memory vector index.\n"
+                   "         Embedding index will be LOST on process exit. Hybrid matching will "
+                   "require\n"
+                   "         re-embedding on restart. Pass --vector-backend sqlite "
+                   "--vector-db-path <dir>.\n";
+      break;
+    case vector::VectorBackend::kLanceDb:
+      break;  // unreachable — validated and rejected above
   }
 
   std::cerr << "Listening on stdio for JSON-RPC requests...\n";
@@ -89,20 +103,26 @@ int main(int argc, char* argv[]) {
   auto ingestor_owner = ingest::create_resume_ingestor();
   ingest::IResumeIngestor& ingestor = *ingestor_owner;
 
-  // Construct the vector index. The lancedb path was validated above.
+  // Construct the vector index. The vector_db_path was validated above when kSqlite is selected.
   std::unique_ptr<vector::IEmbeddingIndex> vector_index_owner;
-  if (config.vector_backend == "lancedb") {
-    const std::string& dir = config.lancedb_path.value();
-    std::filesystem::create_directories(dir);
-    const std::string db_file = dir + "/vectors.db";
-    try {
-      vector_index_owner = std::make_unique<vector::SqliteEmbeddingIndex>(db_file);
-    } catch (const std::exception& e) {
-      std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
-      return 1;
+  switch (config.vector_backend) {
+    case vector::VectorBackend::kSqlite: {
+      const std::string& dir = config.vector_db_path.value();
+      std::filesystem::create_directories(dir);
+      const std::string db_file = dir + "/vectors.db";
+      try {
+        vector_index_owner = std::make_unique<vector::SqliteEmbeddingIndex>(db_file);
+      } catch (const std::exception& e) {
+        std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
+        return 1;
+      }
+      break;
     }
-  } else {
-    vector_index_owner = std::make_unique<vector::InMemoryEmbeddingIndex>();
+    case vector::VectorBackend::kInMemory:
+      vector_index_owner = std::make_unique<vector::InMemoryEmbeddingIndex>();
+      break;
+    case vector::VectorBackend::kLanceDb:
+      break;  // unreachable — validated and rejected above
   }
   vector::IEmbeddingIndex& vector_index = *vector_index_owner;
 

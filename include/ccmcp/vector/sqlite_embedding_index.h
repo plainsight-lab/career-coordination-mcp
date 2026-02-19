@@ -11,11 +11,12 @@ struct sqlite3;
 namespace ccmcp::vector {
 
 // SqliteEmbeddingIndex is a persistent vector index backed by a dedicated SQLite database.
+// It is selected via --vector-backend sqlite (with --vector-db-path specifying the directory).
 //
-// This class serves the LanceDB architectural slot (--vector-backend lancedb) until an
-// official LanceDB C++ SDK becomes available in vcpkg. SQLite was chosen because it is
-// already a project dependency and satisfies the same persistence, determinism, and
-// interface-contract requirements.
+// SQLite was chosen because it is already a project dependency and satisfies the same
+// persistence, determinism, and interface-contract requirements as a purpose-built vector
+// store. When a C++ LanceDB SDK becomes available in vcpkg, LanceDBEmbeddingIndex can be
+// wired as --vector-backend lancedb; SqliteEmbeddingIndex remains available as a fallback.
 //
 // Storage: a standalone SQLite database at a caller-supplied file path.
 //   Schema: embedding_vectors(key TEXT PK, vector_blob BLOB, dimension INT,

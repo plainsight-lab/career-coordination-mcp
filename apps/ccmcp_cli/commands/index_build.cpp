@@ -12,6 +12,7 @@
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
 #include "ccmcp/vector/inmemory_embedding_index.h"
 #include "ccmcp/vector/sqlite_embedding_index.h"
+#include "ccmcp/vector/vector_backend.h"
 
 #include "shared/arg_parser.h"
 #include <filesystem>
@@ -25,7 +26,7 @@ namespace {
 
 struct IndexBuildCliConfig {
   std::string db_path{"data/ccmcp.db"};
-  std::string vector_backend{"inmemory"};
+  ccmcp::vector::VectorBackend vector_backend{ccmcp::vector::VectorBackend::kInMemory};
   std::optional<std::string> vector_db_path;
   std::string scope{"all"};
   bool args_valid{true};
@@ -42,13 +43,22 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
        }},
       {"--vector-backend", true, "Vector backend (inmemory|sqlite)",
        [](IndexBuildCliConfig& c, const std::string& v) {
-         if (v == "inmemory" || v == "sqlite") {
-           c.vector_backend = v;
-           return true;
+         auto backend = ccmcp::vector::parse_vector_backend(v);
+         if (!backend.has_value()) {
+           std::cerr << "Invalid --vector-backend: " << v
+                     << " (valid: inmemory, sqlite; lancedb is reserved and not yet "
+                        "implemented)\n";
+           c.args_valid = false;
+           return false;
          }
-         std::cerr << "Invalid --vector-backend: " << v << " (valid: inmemory, sqlite)\n";
-         c.args_valid = false;
-         return false;
+         if (backend.value() == ccmcp::vector::VectorBackend::kLanceDb) {
+           std::cerr << "Error: --vector-backend lancedb is reserved and not yet implemented.\n"
+                        "       Use --vector-backend sqlite for persistent vector storage.\n";
+           c.args_valid = false;
+           return false;
+         }
+         c.vector_backend = backend.value();
+         return true;
        }},
       {"--vector-db-path", true, "Directory for SQLite-backed vector index",
        [](IndexBuildCliConfig& c, const std::string& v) {
@@ -71,7 +81,8 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
   if (!config.args_valid) {
     return 1;
   }
-  if (config.vector_backend == "sqlite" && !config.vector_db_path.has_value()) {
+  if (config.vector_backend == ccmcp::vector::VectorBackend::kSqlite &&
+      !config.vector_db_path.has_value()) {
     std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
     return 1;
   }
@@ -96,19 +107,25 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
   ccmcp::storage::sqlite::SqliteAuditLog audit_log(db);
 
   std::unique_ptr<ccmcp::vector::IEmbeddingIndex> vector_index_owner;
-  if (config.vector_backend == "sqlite") {
-    const std::string& dir = config.vector_db_path.value();
-    std::filesystem::create_directories(dir);
-    const std::string db_file = dir + "/vectors.db";
-    try {
-      vector_index_owner = std::make_unique<ccmcp::vector::SqliteEmbeddingIndex>(db_file);
-      std::cout << "Using SQLite-backed vector index: " << db_file << "\n";
-    } catch (const std::exception& e) {
-      std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
-      return 1;
+  switch (config.vector_backend) {
+    case ccmcp::vector::VectorBackend::kSqlite: {
+      const std::string& dir = config.vector_db_path.value();
+      std::filesystem::create_directories(dir);
+      const std::string db_file = dir + "/vectors.db";
+      try {
+        vector_index_owner = std::make_unique<ccmcp::vector::SqliteEmbeddingIndex>(db_file);
+        std::cout << "Using SQLite-backed vector index: " << db_file << "\n";
+      } catch (const std::exception& e) {
+        std::cerr << "Error: failed to open vector index: " << e.what() << "\n";
+        return 1;
+      }
+      break;
     }
-  } else {
-    vector_index_owner = std::make_unique<ccmcp::vector::InMemoryEmbeddingIndex>();
+    case ccmcp::vector::VectorBackend::kInMemory:
+      vector_index_owner = std::make_unique<ccmcp::vector::InMemoryEmbeddingIndex>();
+      break;
+    case ccmcp::vector::VectorBackend::kLanceDb:
+      break;  // unreachable — rejected during argument parsing above
   }
 
   ccmcp::embedding::DeterministicStubEmbeddingProvider embedding_provider(128);
@@ -118,7 +135,7 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
   const ccmcp::indexing::IndexBuildConfig build_config{config.scope, "deterministic-stub", "", ""};
 
   std::cout << "Starting index-build: db=" << config.db_path << " scope=" << config.scope
-            << " backend=" << config.vector_backend << "\n";
+            << " backend=" << ccmcp::vector::to_string(config.vector_backend) << "\n";
 
   const auto result = ccmcp::indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store,
                                                        *vector_index_owner, embedding_provider,

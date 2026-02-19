@@ -145,10 +145,11 @@ See: [CONSTITUTIONAL_RULES.md](CONSTITUTIONAL_RULES.md)
 Derived similarity index for hybrid retrieval.
 
 - Interface: `IEmbeddingIndex` (upsert, query, get)
-- `InMemoryEmbeddingIndex`: ephemeral; used for testing and default server mode.
-- `SqliteEmbeddingIndex`: persistent; fills the LanceDB architectural slot (no C++ LanceDB SDK available in vcpkg). Stored in a separate SQLite file (`vectors.db`).
-- `LanceDBEmbeddingIndex`: reserved stub — throws on all methods. Migration target when a C++ SDK becomes available.
+- `InMemoryEmbeddingIndex`: ephemeral; used for testing and default server mode (`--vector-backend inmemory`).
+- `SqliteEmbeddingIndex`: persistent; selected via `--vector-backend sqlite` (`--vector-db-path` required). Stored in a separate SQLite file (`vectors.db`).
+- `LanceDBEmbeddingIndex`: reserved stub — throws on all methods. `--vector-backend lancedb` is rejected at startup with an actionable message until a C++ LanceDB SDK is available in vcpkg.
 - `NullEmbeddingIndex`: explicit opt-out; returns empty results.
+- Backend vocabulary is governed by `VectorBackend` enum (`include/ccmcp/vector/vector_backend.h`); CLI and MCP server share the same valid values.
 - Embeddings are **derived artifacts** — rebuildable from canonical sources at any time.
 - See: [VECTORDB_BACKEND.md](VECTORDB_BACKEND.md)
 

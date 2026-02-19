@@ -39,6 +39,7 @@ add_executable(ccmcp_tests
   test_app_service_index_build_pipeline.cpp
   test_decision_record.cpp
   test_sqlite_decision_store.cpp
+  test_vector_backend.cpp
 )
 
 target_link_libraries(ccmcp_tests

@@ -67,8 +67,8 @@ All flags are optional. The server prints explicit `WARNING:` lines on stderr fo
 |------|-------------|---------|
 | `--db <path>` | SQLite database file for atoms, opportunities, interactions, resumes, index runs, audit log | in-memory (ephemeral) |
 | `--redis <uri>` | Redis URI for durable interaction coordination (e.g. `redis://localhost:6379`) | in-memory coordinator (ephemeral) |
-| `--vector-backend <name>` | Vector index backend: `inmemory` or `lancedb` | `inmemory` (ephemeral) |
-| `--lancedb-path <dir>` | Directory for LanceDB (SQLite-backed) vector index; **required** when `--vector-backend lancedb` | — |
+| `--vector-backend <name>` | Vector index backend: `inmemory` or `sqlite` | `inmemory` (ephemeral) |
+| `--vector-db-path <dir>` | Directory for SQLite-backed vector index; **required** when `--vector-backend sqlite` | — |
 | `--matching-strategy <name>` | Default strategy: `lexical` or `hybrid` | `lexical` |
 
 ### Example: fully persistent
@@ -77,8 +77,8 @@ All flags are optional. The server prints explicit `WARNING:` lines on stderr fo
 ./build-vcpkg/apps/mcp_server/mcp_server \
   --db career.db \
   --redis redis://localhost:6379 \
-  --vector-backend lancedb \
-  --lancedb-path ./vectors \
+  --vector-backend sqlite \
+  --vector-db-path ./vectors \
   --matching-strategy lexical
 ```
 
@@ -104,9 +104,11 @@ When `--db` is **not** provided:
 - `SqliteResumeStore` and `SqliteIndexRunStore` use a dedicated `SqliteDb::open(":memory:")`.
   There are no separate in-memory implementations of these interfaces.
 
-### Vector backend (`--vector-backend lancedb`)
+### Vector backend (`--vector-backend sqlite`)
 
-LanceDB is implemented via `SqliteEmbeddingIndex` (the declared LanceDB C++ SDK is unavailable in vcpkg; `SqliteEmbeddingIndex` is the storage-layer equivalent). The vector database is stored at `<lancedb-path>/vectors.db`.
+`SqliteEmbeddingIndex` provides persistent vector storage. The vector database is stored at `<vector-db-path>/vectors.db`.
+
+`--vector-backend lancedb` is reserved for a future LanceDB C++ SDK integration; the server rejects it at startup with an actionable message. Use `--vector-backend sqlite` for persistence.
 
 When `--vector-backend inmemory` (default), the embedding index is ephemeral and lost on restart.
 
@@ -455,11 +457,11 @@ The MCP server delegates **all business logic** to `app_service`. This ensures:
 
 ---
 
-## Current Limitations (v0.3)
+## Current Limitations (v0.4)
 
 1. **`validate_match_report`**: Routing registered but full standalone implementation pending
 2. **Inline opportunity**: `match_opportunity` requires pre-existing `opportunity_id`; inline objects not yet supported
-3. **Real LanceDB**: `--vector-backend lancedb` uses `SqliteEmbeddingIndex` under the hood; native LanceDB C++ SDK not available in vcpkg
+3. **Real LanceDB**: `--vector-backend lancedb` is reserved; native LanceDB C++ SDK not yet available in vcpkg. Use `--vector-backend sqlite` for persistent vector storage.
 4. **No authentication**: No user identity or access control (research artifact)
 5. **Deterministic clock/IDs**: Server uses `DeterministicIdGenerator` and `FixedClock`; production use would inject a real wall clock and UUID generator
 
