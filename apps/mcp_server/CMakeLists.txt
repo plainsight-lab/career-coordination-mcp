@@ -3,6 +3,7 @@ add_executable(mcp_server
   mcp_protocol.cpp
   config.cpp
   server_loop.cpp
+  startup_guard.cpp
   method_handlers.cpp
   handlers/match_opportunity.cpp
   handlers/validate_match_report.cpp

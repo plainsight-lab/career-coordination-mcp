@@ -74,6 +74,8 @@ add_library(ccmcp
   src/vector/sqlite_embedding_index.cpp
   src/interaction/inmemory_interaction_coordinator.cpp
   src/interaction/redis_interaction_coordinator.cpp
+  src/interaction/redis_config.cpp
+  src/interaction/redis_health.cpp
   src/matching/matcher.cpp
   src/app/app_service.cpp
 )

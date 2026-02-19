@@ -8,7 +8,7 @@ all with a complete, auditable trail.
 The system may optionally use LLMs for text generation, but all decisions are constrained
 and validated by deterministic rules. If LLM output cannot be validated, it is rejected.
 
-**Current version:** v0.3 (complete — 6 slices, 175 tests, 0 failures)
+**Current version:** v0.4 (Slice 5 — Redis-First Operational Posture)
 
 ---
 
@@ -57,8 +57,8 @@ and validated by deterministic rules. If LLM output cannot be validated, it is r
                        │
 ┌──────────────────────▼──────────────────────────┐
 │  Storage Implementations                        │
-│  SQLite (primary)   InMemory (test/ephemeral)   │
-│  Redis (optional — interaction coordination)    │
+│  SQLite (primary)   InMemory (unit tests only)  │
+│  Redis (required — interaction coordination)    │
 │  SqliteEmbeddingIndex (vector persistence)      │
 └─────────────────────────────────────────────────┘
 ```
@@ -179,11 +179,29 @@ Produces and persists embeddings with full provenance.
 Governs contact interaction lifecycle; prevents duplicate outreach.
 
 - Interface: `IInteractionCoordinator`
-- Implementations: `InMemoryInteractionCoordinator`, `RedisInteractionCoordinator`
+- Implementations: `InMemoryInteractionCoordinator` (unit tests only), `RedisInteractionCoordinator` (production — required)
 - States: `kDraft` → `kReady` → `kSent` → `kResponded` → `kClosed`
 - Events: `kPrepare`, `kSend`, `kReceiveReply`, `kClose`
 - Idempotency: transitions tracked by `idempotency_key` to prevent double-apply.
-- SQLite schema v1 (`interactions` table) + optional Redis for durable coordination.
+- SQLite schema v1 (`interactions` table) + Redis for durable coordination.
+- Redis is a **required** first-class coordination dependency (not optional). The MCP server
+  fails fast with an actionable error if `--redis <uri>` is absent. `InMemoryInteractionCoordinator`
+  is never constructed in production startup paths.
+
+### Ordering Guarantees
+
+Transition ordering is enforced by two complementary mechanisms:
+
+1. **Monotonic `transition_index`**: Every successful `apply_transition()` increments the
+   `transition_index` for that interaction. The index starts at 0 (creation) and is strictly
+   increasing. Idempotency receipts return the original `transition_index` unchanged — repeated
+   replays cannot advance the counter.
+
+2. **Lua atomicity (Redis path)**: The `RedisInteractionCoordinator` uses a Lua script that
+   executes WATCH + read-check-write as a single atomic unit. This ensures that concurrent
+   workers cannot both observe the same `transition_index` and both succeed — only one wins,
+   the other gets `kConflict`. The Lua script enforces: idempotency check → CAS on
+   `transition_index` → state write, all in one Redis round-trip.
 
 ## Interaction Audit Log
 
@@ -279,9 +297,12 @@ Single file (e.g., `career.db`). Schema migrations are chained and idempotent.
 
 `SqliteEmbeddingIndex` stores vectors in a separate file (`vectors.db`). Isolated from the canonical store by design — vectors are rebuildable from canonical sources and must not corrupt canonical data on failure.
 
-## Redis — Optional, Interaction Coordination
+## Redis — Required, Interaction Coordination
 
-Used by `RedisInteractionCoordinator` for durable, atomic FSM transitions. Optional — falls back to `InMemoryInteractionCoordinator` when not configured. Tests opt-in via `CCMCP_TEST_REDIS=1`.
+Used by `RedisInteractionCoordinator` for durable, atomic FSM transitions. Redis is a
+**required** dependency for MCP server startup — the server fails fast with an actionable
+error if `--redis <uri>` is absent. Tests opt-in via `CCMCP_TEST_REDIS=1`; unit tests use
+`InMemoryInteractionCoordinator` directly (unaffected by the production requirement).
 
 ## Ephemeral Fallback
 

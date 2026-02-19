@@ -5,6 +5,7 @@ add_executable(ccmcp_cli
   commands/index_build.cpp
   commands/match.cpp
   commands/decision.cpp
+  commands/redis_health.cpp
 )
 
 target_link_libraries(ccmcp_cli PRIVATE ccmcp nlohmann_json::nlohmann_json)

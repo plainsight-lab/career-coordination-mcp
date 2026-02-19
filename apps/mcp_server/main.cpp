@@ -4,7 +4,7 @@
 #include "ccmcp/core/services.h"
 #include "ccmcp/embedding/embedding_provider.h"
 #include "ccmcp/ingest/resume_ingestor.h"
-#include "ccmcp/interaction/inmemory_interaction_coordinator.h"
+#include "ccmcp/interaction/redis_config.h"
 #include "ccmcp/interaction/redis_interaction_coordinator.h"
 #include "ccmcp/storage/audit_log.h"
 #include "ccmcp/storage/inmemory_atom_repository.h"
@@ -27,6 +27,7 @@
 #include "config.h"
 #include "server_context.h"
 #include "server_loop.h"
+#include "startup_guard.h"
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -42,26 +43,17 @@ int main(int argc, char* argv[]) {
   auto config = mcp::parse_args(argc, argv);
 
   // Validate config before emitting any startup output so no partial messages appear on error.
-  switch (config.vector_backend) {
-    case vector::VectorBackend::kSqlite:
-      if (!config.vector_db_path.has_value()) {
-        std::cerr << "Error: --vector-db-path <dir> is required when --vector-backend sqlite\n";
-        return 1;
-      }
-      break;
-    case vector::VectorBackend::kLanceDb:
-      std::cerr << "Error: --vector-backend lancedb is reserved and not yet implemented.\n"
-                   "       Use --vector-backend sqlite for persistent vector storage.\n";
-      return 1;
-    case vector::VectorBackend::kInMemory:
-      break;
+  const std::string config_error = mcp::validate_mcp_server_config(config);
+  if (!config_error.empty()) {
+    std::cerr << config_error << "\n";
+    return 1;
   }
 
   // ── Startup diagnostic block ──────────────────────────────────────────────
   // Every subsystem announces its operational mode. Ephemeral fallbacks are
   // logged as explicit WARNINGs — not quiet notices — because data loss on a
   // production server must be impossible to miss in operator logs.
-  std::cerr << "career-coordination-mcp MCP Server v0.3\n";
+  std::cerr << "career-coordination-mcp MCP Server v0.4\n";
 
   if (config.db_path.has_value()) {
     std::cerr << "Storage:     SQLite -- " << config.db_path.value() << "\n";
@@ -71,13 +63,11 @@ int main(int argc, char* argv[]) {
                  "         will be LOST on process exit. Pass --db <path> to enable persistence.\n";
   }
 
-  if (config.redis_uri.has_value()) {
-    std::cerr << "Coordinator: Redis -- " << config.redis_uri.value() << "\n";
-  } else {
-    std::cerr << "WARNING: No --redis URI specified. Running with EPHEMERAL in-memory interaction "
-                 "coordinator.\n"
-                 "         Interaction state will NOT survive process restart.\n"
-                 "         Pass --redis <uri> to enable durable coordination.\n";
+  // Redis is required — config was validated above; uri is guaranteed present and valid.
+  {
+    const auto redis_cfg = interaction::parse_redis_uri(config.redis_uri.value());
+    std::cerr << "Coordinator: Redis (required) -- "
+              << interaction::redis_config_to_log_string(redis_cfg.value()) << "\n";
   }
 
   switch (config.vector_backend) {
@@ -130,7 +120,8 @@ int main(int argc, char* argv[]) {
   core::DeterministicIdGenerator id_gen;
   core::FixedClock clock("2026-01-01T00:00:00Z");
 
-  // Initialize repositories based on --db flag
+  // Initialize repositories based on --db flag.
+  // Redis coordinator is always used — validated at startup; uri is guaranteed present.
   if (config.db_path.has_value()) {
     // SQLite persistence path
     auto db_result = storage::sqlite::SqliteDb::open(config.db_path.value());
@@ -160,21 +151,14 @@ int main(int argc, char* argv[]) {
     core::Services services{atom_repo, opportunity_repo, interaction_repo,
                             audit_log, vector_index,     embedding_provider};
 
-    if (config.redis_uri.has_value()) {
-      try {
-        interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
-        mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
-                               decision_store, id_gen,      clock,    config};
-        mcp::run_server_loop(ctx);
-      } catch (const std::exception& e) {
-        std::cerr << "Failed to connect to Redis: " << e.what() << "\n";
-        return 1;
-      }
-    } else {
-      interaction::InMemoryInteractionCoordinator coordinator;
+    try {
+      interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
       mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
                              decision_store, id_gen,      clock,    config};
       mcp::run_server_loop(ctx);
+    } catch (const std::exception& e) {
+      std::cerr << "Failed to connect to Redis: " << e.what() << "\n";
+      return 1;
     }
 
   } else {
@@ -209,10 +193,15 @@ int main(int argc, char* argv[]) {
     core::Services services{atom_repo, opportunity_repo, interaction_repo,
                             audit_log, vector_index,     embedding_provider};
 
-    interaction::InMemoryInteractionCoordinator coordinator;
-    mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
-                           decision_store, id_gen,      clock,    config};
-    run_server_loop(ctx);
+    try {
+      interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
+      mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
+                             decision_store, id_gen,      clock,    config};
+      run_server_loop(ctx);
+    } catch (const std::exception& e) {
+      std::cerr << "Failed to connect to Redis: " << e.what() << "\n";
+      return 1;
+    }
   }
 
   return 0;

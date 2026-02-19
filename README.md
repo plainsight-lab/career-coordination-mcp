@@ -150,14 +150,14 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 186 deterministic unit tests
+├── tests/                 # 201 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–4 merged).
-**Tests:** 186 cases · 1257 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–5 merged).
+**Tests:** 201 cases · 1306 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
@@ -168,7 +168,7 @@ career-coordination-mcp/
 | Hybrid (lexical + embedding) matching | ✅ | SQLite + vector | — | `match_opportunity` |
 | Constitutional validation | ✅ | — | — | `match_opportunity` |
 | Audit log (append-only, trace-queryable) | ✅ | SQLite | — | `get_audit_trace` |
-| Interaction state machine (FSM) | ✅ | SQLite + Redis | — | `interaction_apply_event` |
+| Interaction state machine (FSM) | ✅ | SQLite + Redis (required) | — | `interaction_apply_event` |
 | Resume ingestion | ✅ | SQLite | `ingest-resume` | `ingest_resume` |
 | Token IR generation | ✅ | SQLite | `tokenize-resume` | — |
 | Embedding index build/rebuild | ✅ | SQLite + vector | `index-build` | `index_build` |

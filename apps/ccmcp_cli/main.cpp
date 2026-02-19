@@ -2,6 +2,7 @@
 #include "commands/index_build.h"
 #include "commands/ingest_resume.h"
 #include "commands/match.h"
+#include "commands/redis_health.h"
 #include "commands/tokenize_resume.h"
 #include <array>
 #include <iostream>
@@ -16,13 +17,14 @@ struct Command {
                  char*[]);  // NOLINT(readability-identifier-naming,modernize-avoid-c-arrays)
 };
 
-const std::array<Command, 6> kCommands = {{
+const std::array<Command, 7> kCommands = {{
     {"ingest-resume", "Ingest a resume file into the database", cmd_ingest_resume},
     {"tokenize-resume", "Tokenize an ingested resume into a token IR", cmd_tokenize_resume},
     {"index-build", "Build or rebuild the embedding vector index", cmd_index_build},
     {"match", "Run a demo match against a hardcoded ExampleCo opportunity", cmd_match},
     {"get-decision", "Fetch a match decision record by decision ID", cmd_get_decision},
     {"list-decisions", "List match decision records for a trace ID", cmd_list_decisions},
+    {"redis-health", "Check Redis connectivity (requires --redis <uri>)", cmd_redis_health},
 }};
 
 void print_usage(const char* prog) {

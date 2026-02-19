@@ -4,7 +4,7 @@
 
 The `mcp_server` is a **thin transport layer** that exposes the career-coordination-mcp pipeline as Model Context Protocol (MCP) tools. It implements JSON-RPC 2.0 over stdio and delegates all business logic to the `app_service` layer.
 
-**Status:** ✅ Implemented in v0.3 Slice 5 (MCP Server Hardening + Persistence Wiring)
+**Status:** ✅ Implemented in v0.3 Slice 5; updated in v0.4 Slice 5 (Redis-First Operational Posture)
 
 ## Architecture
 
@@ -61,32 +61,56 @@ The server listens on **stdin** for JSON-RPC requests and writes responses to **
 
 ## Configuration Flags
 
-All flags are optional. The server prints explicit `WARNING:` lines on stderr for every ephemeral (non-persistent) backend.
+`--redis` is **required**. The server fails fast with an actionable error if it is absent.
+All other flags are optional; the server prints explicit `WARNING:` lines on stderr for every
+ephemeral (non-persistent) backend.
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--redis <uri>` | **Required.** Redis URI for durable interaction coordination (e.g. `tcp://127.0.0.1:6379`) | — (required) |
 | `--db <path>` | SQLite database file for atoms, opportunities, interactions, resumes, index runs, audit log | in-memory (ephemeral) |
-| `--redis <uri>` | Redis URI for durable interaction coordination (e.g. `redis://localhost:6379`) | in-memory coordinator (ephemeral) |
 | `--vector-backend <name>` | Vector index backend: `inmemory` or `sqlite` | `inmemory` (ephemeral) |
 | `--vector-db-path <dir>` | Directory for SQLite-backed vector index; **required** when `--vector-backend sqlite` | — |
 | `--matching-strategy <name>` | Default strategy: `lexical` or `hybrid` | `lexical` |
+
+### Startup failure: missing or invalid `--redis`
+
+```
+$ ./build-vcpkg/apps/mcp_server/mcp_server
+Error: --redis <uri> is required.
+       The MCP server requires Redis for durable interaction coordination.
+       Pass --redis tcp://host:port to enable it.
+       See docs/DEVELOPMENT.md for local Redis setup.
+```
+
+Exit code: 1. No MCP messages are written to stdout before this error.
+
+### Startup diagnostic: resolved Redis config
+
+When `--redis` is valid, the server logs the resolved host and port at startup:
+
+```
+career-coordination-mcp MCP Server v0.4
+Coordinator: Redis (required) -- 127.0.0.1:6379
+```
 
 ### Example: fully persistent
 
 ```bash
 ./build-vcpkg/apps/mcp_server/mcp_server \
+  --redis tcp://127.0.0.1:6379 \
   --db career.db \
-  --redis redis://localhost:6379 \
   --vector-backend sqlite \
   --vector-db-path ./vectors \
   --matching-strategy lexical
 ```
 
-### Example: ephemeral (development)
+### Example: ephemeral storage, durable coordinator
 
 ```bash
-./build-vcpkg/apps/mcp_server/mcp_server
-# WARNING: all subsystems ephemeral — data lost on exit
+./build-vcpkg/apps/mcp_server/mcp_server --redis tcp://127.0.0.1:6379
+# WARNING: atom/opportunity/interaction data is ephemeral — lost on exit
+# Redis coordinator is durable across restarts
 ```
 
 ## Persistence Behavior

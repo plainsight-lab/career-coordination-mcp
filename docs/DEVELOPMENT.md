@@ -152,14 +152,61 @@ Baseline:     verified ✓
 Configuring CMake...
 Building...
 Running tests...
-test cases:  184 |  177 passed | 7 skipped
-assertions: 1236 | 1236 passed
+test cases:  201 |  194 passed | 7 skipped
+assertions: 1306 | 1306 passed
 === All tests passed ===
 === Build complete ===
 ```
 
 The 7 skipped tests are opt-in integration tests for Redis (`CCMCP_TEST_REDIS=1`) and
 SQLite vector persistence (`CCMCP_TEST_LANCEDB=1`). They are skipped by default.
+
+---
+
+## Running Redis Locally
+
+The MCP server requires a running Redis instance (`--redis <uri>`). For local development:
+
+### macOS (Homebrew)
+
+```bash
+# Install
+brew install redis
+
+# Start (foreground, for quick checks)
+redis-server
+
+# Start as a background service (persists across reboots)
+brew services start redis
+
+# Verify
+redis-cli ping
+# Expected: PONG
+
+# Stop background service when done
+brew services stop redis
+```
+
+### Docker (cross-platform)
+
+```bash
+# Start Redis on default port 6379
+docker run --rm -p 6379:6379 redis:7-alpine
+
+# In another terminal, verify
+redis-cli ping
+# Expected: PONG
+```
+
+### Health Check CLI
+
+After building, use the `redis-health` subcommand to verify connectivity:
+
+```bash
+./build-vcpkg/apps/ccmcp_cli/ccmcp_cli redis-health --redis tcp://127.0.0.1:6379
+# Expected: OK: Redis reachable at 127.0.0.1:6379
+# Exit code: 0 on success, 1 on failure
+```
 
 ---
 

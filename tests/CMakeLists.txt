@@ -41,12 +41,22 @@ add_executable(ccmcp_tests
   test_sqlite_decision_store.cpp
   test_vector_backend.cpp
   test_override_rail.cpp
+  test_redis_config.cpp
+  test_startup_guard.cpp
+  test_interaction_ordering.cpp
+  ../apps/mcp_server/startup_guard.cpp
 )
 
 target_link_libraries(ccmcp_tests
   PRIVATE
     ccmcp
     Catch2::Catch2WithMain
+)
+
+# Allow test_startup_guard.cpp to include startup_guard.h and config.h
+# (private mcp_server headers that are not part of the ccmcp library).
+target_include_directories(ccmcp_tests PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../apps/mcp_server
 )
 
 include(Catch)
