@@ -1,7 +1,10 @@
 #pragma once
 
 #include "ccmcp/constitution/constitution.h"
+#include "ccmcp/constitution/override_request.h"
 #include "ccmcp/constitution/validation_report.h"
+
+#include <optional>
 
 namespace ccmcp::constitution {
 
@@ -14,8 +17,16 @@ class ValidationEngine {
 
   // Con.2: validate() is const - it performs validation without modifying engine state.
   // The engine is immutable after construction for deterministic, thread-safe validation.
-  [[nodiscard]] ValidationReport validate(const ArtifactEnvelope& envelope,
-                                          const ValidationContext& context) const;
+  //
+  // If override is provided and matches a BLOCK finding (rule_id + payload_hash), the
+  // report status is set to kOverridden. BLOCK findings remain in the findings list so
+  // the audit trail is preserved. All other behavior is unchanged when override is nullopt.
+  //
+  // payload_hash must equal stable_hash64_hex(envelope.artifact_id); callers are
+  // responsible for binding the override to the current artifact before calling validate().
+  [[nodiscard]] ValidationReport validate(
+      const ArtifactEnvelope& envelope, const ValidationContext& context,
+      const std::optional<ConstitutionOverrideRequest>& override = std::nullopt) const;
 
  private:
   Constitution constitution_;

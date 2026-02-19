@@ -12,6 +12,7 @@ enum class ValidationStatus {
   kNeedsReview,
   kRejected,
   kBlocked,
+  kOverridden,  // BLOCK present but explicitly overridden by an authorized operator
 };
 
 struct ValidationReport {

@@ -150,14 +150,14 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 184 deterministic unit tests
+├── tests/                 # 186 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–3 merged).
-**Tests:** 184 cases · 1236 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–4 merged).
+**Tests:** 186 cases · 1257 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
@@ -174,6 +174,7 @@ career-coordination-mcp/
 | Embedding index build/rebuild | ✅ | SQLite + vector | `index-build` | `index_build` |
 | Drift detection (source hash comparison) | ✅ (within session) | SQLite | — | — |
 | Decision records (match provenance) | ✅ | SQLite | `get-decision`, `list-decisions` | `get_decision`, `list_decisions` |
+| Constitutional BLOCK override (authorized operator) | ✅ | — (request-scoped) | `--override-rule --operator --reason` | — |
 
 All v0.3 slices are implemented and passing. See [Roadmap](#roadmap) below for full details.
 
@@ -375,6 +376,16 @@ The engine can integrate LLM providers later, but:
 - `scripts/build.sh` — deterministic build entrypoint with baseline verification
 - `docs/DEVELOPMENT.md` — clean-room build procedure and dependency governance
 - `docs/ARCHITECTURE.md` — Dependency Governance section
+
+**Slice 4 — Constitutional BLOCK Override Rail** ✅
+- `ConstitutionOverrideRequest` domain type (`rule_id`, `operator_id`, `reason`, `payload_hash`)
+- `ValidationStatus::kOverridden` — 5th distinct terminal status; BLOCK present but explicitly overridden
+- `payload_hash` binding: `stable_hash64_hex(envelope.artifact_id)` — override is artifact-bound; mismatch silently rejects
+- CVE: override applied post-findings-sort; BLOCK findings preserved; only `status` changes to `kOverridden`
+- `ConstitutionOverrideApplied` audit event emitted after `ValidationCompleted` when override applied
+- CLI: `--override-rule`, `--operator`, `--reason` — all-or-nothing; partial set fails fast
+- Override logic confined to `app_service`/CVE layers — no storage adapter participation
+- See [CONSTITUTIONAL_RULES.md](docs/CONSTITUTIONAL_RULES.md) — BLOCK Override Rail section
 
 **Planned:**
 - Containerization (enables Poppler/MuPDF for real PDF extraction)

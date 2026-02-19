@@ -1,6 +1,7 @@
 #include "ccmcp/app/app_service.h"
 
 #include "ccmcp/constitution/match_report_view.h"
+#include "ccmcp/constitution/override_request.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
 #include "ccmcp/core/hashing.h"
@@ -8,6 +9,7 @@
 #include "ccmcp/ingest/ingest_result.h"
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <stdexcept>
 
@@ -75,8 +77,9 @@ MatchPipelineResponse run_match_pipeline(const MatchPipelineRequest& req, core::
                              clock.now_iso8601(),
                              {match_report.opportunity_id.value}});
 
-  // Run validation
-  auto validation_report = run_validation_pipeline(match_report, services, id_gen, clock, trace_id);
+  // Run validation (with optional constitutional override)
+  auto validation_report = run_validation_pipeline(match_report, services, id_gen, clock, trace_id,
+                                                   req.override_request);
 
   // Emit RunCompleted event
   services.audit_log.append({id_gen.next("evt"),
@@ -93,11 +96,10 @@ MatchPipelineResponse run_match_pipeline(const MatchPipelineRequest& req, core::
   };
 }
 
-constitution::ValidationReport run_validation_pipeline(const domain::MatchReport& report,
-                                                       core::Services& services,
-                                                       core::IIdGenerator& id_gen,
-                                                       core::IClock& clock,
-                                                       const std::string& trace_id) {
+constitution::ValidationReport run_validation_pipeline(
+    const domain::MatchReport& report, core::Services& services, core::IIdGenerator& id_gen,
+    core::IClock& clock, const std::string& trace_id,
+    std::optional<constitution::ConstitutionOverrideRequest> override) {
   // Create envelope with typed artifact view
   auto view = std::make_shared<constitution::MatchReportView>(report);
   constitution::ArtifactEnvelope envelope;
@@ -110,9 +112,17 @@ constitution::ValidationReport run_validation_pipeline(const domain::MatchReport
   context.constitution_version = "0.1.0";
   context.trace_id = trace_id;
 
-  // Run validation
+  // Bind payload_hash to the current artifact before calling validate().
+  // The override's payload_hash must match stable_hash64_hex(envelope.artifact_id) for
+  // the CVE to apply the override. We compute and assign it here so the caller only
+  // needs to supply rule_id, operator_id, and reason.
+  if (override.has_value()) {
+    override->payload_hash = core::stable_hash64_hex(envelope.artifact_id);
+  }
+
+  // Run validation (with optional constitutional override)
   constitution::ValidationEngine engine(constitution::make_default_constitution());
-  auto validation_report = engine.validate(envelope, context);
+  auto validation_report = engine.validate(envelope, context, override);
 
   // Emit ValidationCompleted event
   const std::string status_str = [&]() {
@@ -123,6 +133,8 @@ constitution::ValidationReport run_validation_pipeline(const domain::MatchReport
         return "rejected";
       case constitution::ValidationStatus::kBlocked:
         return "blocked";
+      case constitution::ValidationStatus::kOverridden:
+        return "overridden";
       default:
         return "unknown";
     }
@@ -135,6 +147,19 @@ constitution::ValidationReport run_validation_pipeline(const domain::MatchReport
                                  std::to_string(validation_report.findings.size()) + "}",
                              clock.now_iso8601(),
                              {report.opportunity_id.value}});
+
+  // Emit ConstitutionOverrideApplied after ValidationCompleted so the audit trail reads:
+  // ValidationCompleted(status:overridden) → ConstitutionOverrideApplied
+  if (validation_report.status == constitution::ValidationStatus::kOverridden) {
+    services.audit_log.append({id_gen.next("evt"),
+                               trace_id,
+                               "ConstitutionOverrideApplied",
+                               R"({"rule_id":")" + override->rule_id + R"(","operator_id":")" +
+                                   override->operator_id + R"(","reason":")" + override->reason +
+                                   "\"}",
+                               clock.now_iso8601(),
+                               {}});
+  }
 
   return validation_report;
 }
@@ -259,6 +284,8 @@ static domain::DecisionRecord build_decision_record(const MatchPipelineResponse&
         return "blocked";
       case constitution::ValidationStatus::kNeedsReview:
         return "needs_review";
+      case constitution::ValidationStatus::kOverridden:
+        return "overridden";
       default:
         return "unknown";
     }

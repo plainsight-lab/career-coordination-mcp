@@ -183,12 +183,18 @@ Output is pretty-printed JSON (2-space indent).
 
 ## 8. Audit Events
 
-| Event type         | When                                    | Payload                                     |
-|--------------------|-----------------------------------------|---------------------------------------------|
-| `DecisionRecorded` | After `record_match_decision()` returns | `decision_id`, `opportunity_id`             |
+| Event type                     | When                                           | Payload                                              |
+|-------------------------------|------------------------------------------------|------------------------------------------------------|
+| `DecisionRecorded`            | After `record_match_decision()` returns        | `decision_id`, `opportunity_id`                      |
+| `ConstitutionOverrideApplied` | When a BLOCK override is applied in validation | `rule_id`, `operator_id`, `reason`                   |
 
 The `DecisionRecorded` event is appended to the same audit log trace as the preceding
 `MatchCompleted` and `ValidationCompleted` events, enabling full trace reconstruction.
+
+`ConstitutionOverrideApplied` is emitted by `run_validation_pipeline()` immediately after
+`ValidationCompleted` when a constitutional override converts `kBlocked` → `kOverridden`.
+It records who authorized the override and why. The BLOCK finding remains in the
+`ValidationReport.findings` list — overrides are acknowledged, not erased.
 
 ---
 

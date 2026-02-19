@@ -138,6 +138,10 @@ Deterministic rule evaluation subsystem. Validates artifacts before acceptance.
 | TOK-004 | FAIL | Token IR | Anti-hallucination (tokens must be derivable from resume text) |
 | TOK-005 | WARN | Token IR | Excessive tokenization (>500 total or >200 per category) |
 
+**BLOCK Override Rail (v0.4):**
+
+`ValidationEngine::validate()` accepts an optional `ConstitutionOverrideRequest`. When present and matched (rule_id + payload_hash), a BLOCK finding is acknowledged but the report status is set to `kOverridden` rather than `kBlocked`. The BLOCK finding is preserved in the findings list. The `payload_hash` is bound to `stable_hash64_hex(envelope.artifact_id)` by `run_validation_pipeline()` before calling `validate()`. Override logic lives exclusively in the `app_service` / CVE layers — no storage adapter may apply overrides.
+
 See: [CONSTITUTIONAL_RULES.md](CONSTITUTIONAL_RULES.md)
 
 ## Embedding Index (Vector Layer)

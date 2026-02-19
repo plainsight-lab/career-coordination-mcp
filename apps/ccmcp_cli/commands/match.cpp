@@ -1,5 +1,8 @@
 #include "match.h"
 
+#include "ccmcp/app/app_service.h"
+#include "ccmcp/constitution/override_request.h"
+#include "ccmcp/constitution/validation_report.h"
 #include "ccmcp/core/clock.h"
 #include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/ids.h"
@@ -41,12 +44,20 @@ struct MatchCliConfig {
       ccmcp::matching::MatchingStrategy::kDeterministicLexicalV01};
   std::string vector_backend{"inmemory"};
   std::optional<std::string> vector_db_path;
+  // Override rail — all three flags are required together (fail-fast if partial).
+  std::optional<std::string> override_rule_id;
+  std::optional<std::string> override_operator_id;
+  std::optional<std::string> override_reason;
 };
 
 // Hardcoded demo scenario: ExampleCo opportunity matched against two atoms.
 // This is an explicit test fixture — not production matching logic.
-void run_match_demo(ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
-                    ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy) {
+// If override is provided, constitutional validation is run with the override applied;
+// the match command will output the validation status alongside match scores.
+void run_match_demo(
+    ccmcp::core::Services& services, ccmcp::core::DeterministicIdGenerator& id_gen,
+    ccmcp::core::FixedClock& clock, ccmcp::matching::MatchingStrategy strategy,
+    const std::optional<ccmcp::constitution::ConstitutionOverrideRequest>& override) {
   auto trace_id = ccmcp::core::new_trace_id(id_gen);
 
   services.audit_log.append({id_gen.next("evt"),
@@ -109,6 +120,30 @@ void run_match_demo(ccmcp::core::Services& services, ccmcp::core::DeterministicI
   for (const auto& atom_id : report.matched_atoms) {
     out["matched_atoms"].push_back(atom_id.value);
   }
+
+  // Run constitutional validation (always; override is optional).
+  // run_validation_pipeline() binds payload_hash to the artifact automatically.
+  const auto validation_report =
+      ccmcp::app::run_validation_pipeline(report, services, id_gen, clock, trace_id.value,
+                                          override);
+
+  const auto* validation_status = [&]() -> const char* {
+    switch (validation_report.status) {
+      case ccmcp::constitution::ValidationStatus::kAccepted:
+        return "accepted";
+      case ccmcp::constitution::ValidationStatus::kNeedsReview:
+        return "needs_review";
+      case ccmcp::constitution::ValidationStatus::kRejected:
+        return "rejected";
+      case ccmcp::constitution::ValidationStatus::kBlocked:
+        return "blocked";
+      case ccmcp::constitution::ValidationStatus::kOverridden:
+        return "overridden";
+    }
+    return "unknown";
+  }();
+  out["validation_status"] = validation_status;
+
   std::cout << out.dump(2) << "\n";
 
   services.audit_log.append({id_gen.next("evt"),
@@ -160,8 +195,47 @@ int cmd_match(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arrays)
          c.vector_db_path = v;
          return true;
        }},
+      {"--override-rule", true, "Rule ID to override (requires --operator and --reason)",
+       [](MatchCliConfig& c, const std::string& v) {
+         c.override_rule_id = v;
+         return true;
+       }},
+      {"--operator", true, "Operator ID authorizing the override (requires --override-rule)",
+       [](MatchCliConfig& c, const std::string& v) {
+         c.override_operator_id = v;
+         return true;
+       }},
+      {"--reason", true, "Human-readable reason for the override (requires --override-rule)",
+       [](MatchCliConfig& c, const std::string& v) {
+         c.override_reason = v;
+         return true;
+       }},
   };
   auto config = ccmcp::apps::parse_options(argc, argv, options, 2);
+
+  // Fail-fast: --override-rule, --operator, and --reason are an all-or-nothing set.
+  // Providing any subset is a usage error — no implicit defaults are allowed.
+  const bool has_any_override = config.override_rule_id.has_value() ||
+                                config.override_operator_id.has_value() ||
+                                config.override_reason.has_value();
+  const bool has_all_override = config.override_rule_id.has_value() &&
+                                config.override_operator_id.has_value() &&
+                                config.override_reason.has_value();
+  if (has_any_override && !has_all_override) {
+    std::cerr << "Error: --override-rule requires both --operator and --reason\n";
+    return 1;
+  }
+
+  // Build the override request (payload_hash is bound by run_validation_pipeline()).
+  std::optional<ccmcp::constitution::ConstitutionOverrideRequest> override_req;
+  if (has_all_override) {
+    ccmcp::constitution::ConstitutionOverrideRequest req;
+    req.rule_id = *config.override_rule_id;
+    req.operator_id = *config.override_operator_id;
+    req.reason = *config.override_reason;
+    // payload_hash is left empty; run_validation_pipeline() computes and binds it.
+    override_req = req;
+  }
 
   std::cout << "career-coordination-mcp v0.1\n";
   if (config.db_path.has_value()) {
@@ -170,6 +244,10 @@ int cmd_match(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arrays)
   if (config.matching_strategy == ccmcp::matching::MatchingStrategy::kHybridLexicalEmbeddingV02) {
     std::cout << "Matching strategy: hybrid (lexical + embedding)\n";
     std::cout << "Vector backend: " << config.vector_backend << "\n";
+  }
+  if (override_req.has_value()) {
+    std::cout << "Constitutional override: rule=" << override_req->rule_id
+              << " operator=" << override_req->operator_id << "\n";
   }
 
   if (config.vector_backend == "sqlite" && !config.vector_db_path.has_value()) {
@@ -219,7 +297,7 @@ int cmd_match(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arrays)
 
     ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,
                                    audit_log, vector_index,     embedding_provider};
-    run_match_demo(services, id_gen, clock, config.matching_strategy);
+    run_match_demo(services, id_gen, clock, config.matching_strategy, override_req);
   } else {
     ccmcp::storage::InMemoryAtomRepository atom_repo;
     ccmcp::storage::InMemoryOpportunityRepository opportunity_repo;
@@ -229,7 +307,7 @@ int cmd_match(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arrays)
 
     ccmcp::core::Services services{atom_repo, opportunity_repo, interaction_repo,
                                    audit_log, vector_index,     embedding_provider};
-    run_match_demo(services, id_gen, clock, config.matching_strategy);
+    run_match_demo(services, id_gen, clock, config.matching_strategy, override_req);
   }
 
   return 0;

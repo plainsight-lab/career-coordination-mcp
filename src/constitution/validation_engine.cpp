@@ -1,13 +1,16 @@
 #include "ccmcp/constitution/validation_engine.h"
 
 #include "ccmcp/constitution/finding.h"
+#include "ccmcp/constitution/override_request.h"
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/rules/evid_001.h"
 #include "ccmcp/constitution/rules/schema_001.h"
 #include "ccmcp/constitution/rules/score_001.h"
+#include "ccmcp/core/hashing.h"
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -47,8 +50,9 @@ ValidationStatus compute_status_from_findings(const std::vector<Finding>& findin
 ValidationEngine::ValidationEngine(Constitution constitution)
     : constitution_(std::move(constitution)) {}
 
-ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
-                                            const ValidationContext& context) const {
+ValidationReport ValidationEngine::validate(
+    const ArtifactEnvelope& envelope, const ValidationContext& context,
+    const std::optional<ConstitutionOverrideRequest>& override) const {
   ValidationReport report{};
   report.report_id = "report-" + envelope.artifact_id;
   report.trace_id = context.trace_id;
@@ -78,6 +82,23 @@ ValidationReport ValidationEngine::validate(const ArtifactEnvelope& envelope,
     // Then by rule_id lexicographically
     return a.rule_id < b.rule_id;
   });
+
+  // Apply BLOCK override if requested and payload binding matches.
+  // Conditions (both required):
+  //   1. report.status == kBlocked (at least one BLOCK finding exists)
+  //   2. override.rule_id matches a BLOCK finding's rule_id
+  //   3. override.payload_hash == stable_hash64_hex(envelope.artifact_id)
+  // When applied: status → kOverridden; BLOCK findings remain (audit trail preserved).
+  if (override.has_value() && report.status == ValidationStatus::kBlocked) {
+    const std::string expected_hash = core::stable_hash64_hex(envelope.artifact_id);
+    for (const auto& finding : report.findings) {
+      if (finding.severity == FindingSeverity::kBlock && finding.rule_id == override->rule_id &&
+          override->payload_hash == expected_hash) {
+        report.status = ValidationStatus::kOverridden;
+        break;
+      }
+    }
+  }
 
   return report;
 }

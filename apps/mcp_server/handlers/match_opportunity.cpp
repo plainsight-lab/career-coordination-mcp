@@ -97,6 +97,8 @@ json handle_match_opportunity(const json& params, ServerContext& ctx) {
                return "rejected";
              case constitution::ValidationStatus::kBlocked:
                return "blocked";
+             case constitution::ValidationStatus::kOverridden:
+               return "overridden";
              default:
                return "unknown";
            }

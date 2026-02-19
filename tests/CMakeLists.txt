@@ -40,6 +40,7 @@ add_executable(ccmcp_tests
   test_decision_record.cpp
   test_sqlite_decision_store.cpp
   test_vector_backend.cpp
+  test_override_rail.cpp
 )
 
 target_link_libraries(ccmcp_tests

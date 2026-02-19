@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ccmcp/constitution/override_request.h"
 #include "ccmcp/constitution/validation_engine.h"
 #include "ccmcp/constitution/validation_report.h"
 #include "ccmcp/core/clock.h"
@@ -50,6 +51,12 @@ struct MatchPipelineRequest {
 
   // Optional resume context (for audit trail traceability only — does not alter matching)
   std::optional<core::ResumeId> resume_id;  // NOLINT(readability-identifier-naming)
+
+  // Optional constitutional override: applied in run_validation_pipeline() to convert
+  // a BLOCK finding to kOverridden. payload_hash is bound to the artifact by the pipeline.
+  // Fails silently (no override applied) if rule_id or payload_hash does not match.
+  std::optional<constitution::ConstitutionOverrideRequest>
+      override_request;  // NOLINT(readability-identifier-naming)
 };
 
 struct MatchPipelineResponse {
@@ -69,11 +76,16 @@ struct MatchPipelineResponse {
 // Validation Pipeline (standalone)
 // ────────────────────────────────────────────────────────────────
 
-// Run validation only on an existing match report
-// Emits audit event: ValidationCompleted
+// Run validation only on an existing match report.
+// Emits audit event: ValidationCompleted.
+// If override is provided, run_validation_pipeline() binds payload_hash to the artifact
+// (stable_hash64_hex(envelope.artifact_id)) before calling validate(). If the override
+// matches a BLOCK finding, status becomes kOverridden and ConstitutionOverrideApplied
+// audit event is emitted after ValidationCompleted.
 [[nodiscard]] constitution::ValidationReport run_validation_pipeline(
     const domain::MatchReport& report, core::Services& services, core::IIdGenerator& id_gen,
-    core::IClock& clock, const std::string& trace_id);
+    core::IClock& clock, const std::string& trace_id,
+    std::optional<constitution::ConstitutionOverrideRequest> override = std::nullopt);
 
 // ────────────────────────────────────────────────────────────────
 // Interaction Transition

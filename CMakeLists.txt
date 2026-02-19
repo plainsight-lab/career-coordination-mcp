@@ -34,6 +34,7 @@ add_library(ccmcp
   src/domain/match_report.cpp
   src/domain/resume_token_ir.cpp
   src/domain/resume_token_ir_json.cpp
+  src/constitution/override_request.cpp
   src/constitution/token_ir_artifact_view.cpp
   src/constitution/validation_engine.cpp
   src/constitution/rules/schema_001.cpp

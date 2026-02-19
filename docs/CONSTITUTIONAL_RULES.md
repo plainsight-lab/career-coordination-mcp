@@ -400,7 +400,90 @@ Future versions may add optional rules but must not break v0.1 invariants withou
 
 ---
 
+---
+
+## BLOCK Override Rail (v0.4)
+
+Constitutional BLOCKs may be overridden by an authorized human operator. Overrides are:
+
+- **Explicit**: must supply `rule_id`, `operator_id`, and `reason`.
+- **Artifact-bound**: override is bound to a specific artifact via `payload_hash = stable_hash64_hex(envelope.artifact_id)`. A mismatch silently rejects the override (the BLOCK stands).
+- **Audit-emitting**: every applied override emits a `ConstitutionOverrideApplied` audit event.
+- **Non-destructive**: BLOCK findings remain in the `findings` list; only `status` is changed to `kOverridden`.
+
+### ConstitutionOverrideRequest
+
+```cpp
+struct ConstitutionOverrideRequest {
+  std::string rule_id;       // Which BLOCK rule to override (e.g., "SCHEMA-001")
+  std::string operator_id;   // Identifier of the human operator authorizing the override
+  std::string reason;        // Human-readable justification
+  std::string payload_hash;  // stable_hash64_hex(envelope.artifact_id); bound by app_service
+};
+```
+
+### Override Application Logic (CVE)
+
+```
+validate(envelope, context, override)
+  → collect all findings from all rules (unchanged)
+  → compute status from findings (unchanged)
+  → if status == kBlocked AND override.has_value():
+      expected_hash = stable_hash64_hex(envelope.artifact_id)
+      for each BLOCK finding:
+        if finding.rule_id == override.rule_id AND override.payload_hash == expected_hash:
+          status = kOverridden
+          break  // first matching BLOCK wins
+  → return ValidationReport (findings unchanged, status may be kOverridden)
+```
+
+### ValidationStatus: kOverridden
+
+`kOverridden` is a distinct terminal status:
+
+| Status | Meaning |
+|--------|---------|
+| `kAccepted` | No findings; all rules passed |
+| `kNeedsReview` | Only WARN findings; accepted with flags |
+| `kRejected` | FAIL findings (no BLOCK); artifact rejected |
+| `kBlocked` | BLOCK finding; hard rejection |
+| `kOverridden` | BLOCK present but explicitly overridden by authorized operator |
+
+### CLI Usage
+
+```bash
+# Override a BLOCK finding from SCHEMA-001 during a match run
+ccmcp_cli match --override-rule SCHEMA-001 \
+                --operator "alice" \
+                --reason "Manually verified structural integrity in offline review"
+```
+
+All three flags (`--override-rule`, `--operator`, `--reason`) are required together.
+Providing a partial set is a usage error (fail-fast with an error message).
+
+### Audit Event: ConstitutionOverrideApplied
+
+Emitted by `run_validation_pipeline()` immediately after `ValidationCompleted` when a BLOCK override is applied:
+
+```json
+{
+  "event_type": "ConstitutionOverrideApplied",
+  "payload": {
+    "rule_id": "SCHEMA-001",
+    "operator_id": "alice",
+    "reason": "Manually verified structural integrity in offline review"
+  }
+}
+```
+
+### Storage Boundary
+
+Override logic lives **exclusively** in the `app_service` / CVE layers. No storage adapter, SQL query, or Redis coordinator may apply overrides. Overrides are not persisted; they are request-scoped and ephemeral.
+
+---
+
 ## Version History
 
+- **v0.4** (2026-02-19): Added BLOCK Override Rail (`ConstitutionOverrideRequest`, `kOverridden` status)
 - **v0.3** (2026-02-17): Added Token IR rules (TOK-001 through TOK-005)
 - **v0.1** (2026-02-14): Initial rule set (SCHEMA-001, EVID-001, SCORE-001)
