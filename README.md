@@ -150,14 +150,14 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 212 deterministic unit tests
+├── tests/                 # 221 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–7 complete).
-**Tests:** 212 cases · 1357 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–8 complete).
+**Tests:** 221 cases · 1391 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
@@ -408,6 +408,16 @@ The engine can integrate LLM providers later, but:
 - Schema v7: `runtime_snapshots` table — `run_id`, `snapshot_json`, `snapshot_hash`, `created_at`
 - MCP server emits one snapshot per process launch, before `run_server_loop`, in both code paths
 - New invariant: every run with a persisted DB has a matching `runtime_snapshots` row
+
+**Slice 8 — Deterministic Audit Hash Chain (Event Integrity Precursor to Crypto)** ✅
+- `AuditEvent` extended: `previous_hash` + `event_hash` fields (default `""`, computed on append)
+- `kGenesisHash` — 64 zero hex digits, deterministic chain anchor for each trace's first event
+- `compute_event_hash()` — SHA-256(stable JSON of event fields + previous_hash), alphabetically sorted keys
+- `verify_audit_chain()` — recomputes every link; returns `AuditChainVerificationResult` (valid, index, error)
+- Both `InMemoryAuditLog::append` and `SqliteAuditLog::append` compute and store the chain
+- `SqliteAuditLog` fetches `(idx, previous_hash)` atomically under a single lock acquisition
+- Schema v8: `ALTER TABLE audit_events ADD COLUMN previous_hash / event_hash TEXT NOT NULL DEFAULT ''`
+- New invariant: every appended audit event carries a tamper-evident SHA-256 hash linking it to its predecessor
 
 **Planned:**
 - Containerization (enables Poppler/MuPDF for real PDF extraction)

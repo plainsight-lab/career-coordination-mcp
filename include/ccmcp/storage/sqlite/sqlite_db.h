@@ -65,6 +65,9 @@ class SqliteDb {
   // Apply schema v7 if not already applied (adds runtime_snapshots table)
   [[nodiscard]] core::Result<bool, std::string> ensure_schema_v7();
 
+  // Apply schema v8 if not already applied (adds previous_hash + event_hash to audit_events)
+  [[nodiscard]] core::Result<bool, std::string> ensure_schema_v8();
+
   // Execute SQL statement (for non-query operations)
   [[nodiscard]] core::Result<bool, std::string> exec(const std::string& sql);
 

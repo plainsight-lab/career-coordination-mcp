@@ -2,6 +2,7 @@
 
 #include "ccmcp/storage/audit_event.h"
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,8 @@ class InMemoryAuditLog final : public IAuditLog {
 
  private:
   std::vector<AuditEvent> events_;
+  // Per-trace last event_hash, used to chain new events.
+  std::map<std::string, std::string> last_hash_;
 };
 
 }  // namespace ccmcp::storage

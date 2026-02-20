@@ -389,6 +389,51 @@ core::Result<bool, std::string> SqliteDb::ensure_schema_v7() {
   return core::Result<bool, std::string>::ok(true);
 }
 
+core::Result<bool, std::string> SqliteDb::ensure_schema_v8() {
+  // Ensure v7 is applied first
+  auto v7_result = ensure_schema_v7();
+  if (!v7_result.has_value()) {
+    return v7_result;
+  }
+
+  if (get_schema_version() >= 8) {
+    return core::Result<bool, std::string>::ok(true);
+  }
+
+  char* err_msg = nullptr;
+  // SQLite does not support multiple statements in a single sqlite3_exec call when they
+  // include ALTER TABLE. Execute each DDL statement separately.
+  const char* add_previous_hash =
+      "ALTER TABLE audit_events ADD COLUMN previous_hash TEXT NOT NULL DEFAULT ''";
+  int rc = sqlite3_exec(db_.get(), add_previous_hash, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v8 (previous_hash): " +
+                                                error);
+  }
+
+  const char* add_event_hash =
+      "ALTER TABLE audit_events ADD COLUMN event_hash TEXT NOT NULL DEFAULT ''";
+  rc = sqlite3_exec(db_.get(), add_event_hash, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v8 (event_hash): " + error);
+  }
+
+  const char* version_insert =
+      "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (8, datetime('now'))";
+  rc = sqlite3_exec(db_.get(), version_insert, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to record schema v8 version: " + error);
+  }
+
+  return core::Result<bool, std::string>::ok(true);
+}
+
 core::Result<bool, std::string> SqliteDb::exec(const std::string& sql) {
   char* err_msg = nullptr;
   int rc = sqlite3_exec(db_.get(), sql.c_str(), nullptr, nullptr, &err_msg);

@@ -49,6 +49,7 @@ add_library(ccmcp
   src/tokenization/deterministic_lexical_tokenizer.cpp
   src/tokenization/stub_inference_tokenizer.cpp
   src/storage/audit_log.cpp
+  src/storage/audit_chain.cpp
   src/storage/inmemory_atom_repository.cpp
   src/storage/inmemory_opportunity_repository.cpp
   src/storage/inmemory_interaction_repository.cpp

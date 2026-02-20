@@ -136,7 +136,7 @@ int main(int argc, char* argv[]) {
 
     auto db = db_result.value();
     // ensure_schema_v7 chains v1→v6; all schema migrations are idempotent.
-    auto schema_result = db->ensure_schema_v7();
+    auto schema_result = db->ensure_schema_v8();
     if (!schema_result.has_value()) {
       std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
       return 1;
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto mem_db = mem_db_result.value();
-    auto mem_schema_result = mem_db->ensure_schema_v7();
+    auto mem_schema_result = mem_db->ensure_schema_v8();
     if (!mem_schema_result.has_value()) {
       std::cerr << "Failed to initialize in-memory schema: " << mem_schema_result.error() << "\n";
       return 1;

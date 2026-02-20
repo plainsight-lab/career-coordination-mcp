@@ -152,8 +152,8 @@ Baseline:     verified ✓
 Configuring CMake...
 Building...
 Running tests...
-test cases:  212 |  205 passed | 7 skipped
-assertions: 1357 | 1357 passed
+test cases:  221 |  214 passed | 7 skipped
+assertions: 1391 | 1391 passed
 === All tests passed ===
 === Build complete ===
 ```

@@ -12,7 +12,7 @@ TEST_CASE("SqliteAuditLog append and query", "[sqlite][audit]") {
   auto db = db_result.value();
 
   // Initialize schema
-  auto schema_result = db->ensure_schema_v1();
+  auto schema_result = db->ensure_schema_v8();
   REQUIRE(schema_result.has_value());
 
   // Create audit log
@@ -50,7 +50,7 @@ TEST_CASE("SqliteAuditLog multiple traces", "[sqlite][audit]") {
   auto db_result = storage::sqlite::SqliteDb::open(":memory:");
   REQUIRE(db_result.has_value());
   auto db = db_result.value();
-  db->ensure_schema_v1();
+  db->ensure_schema_v8();
 
   storage::sqlite::SqliteAuditLog audit_log(db);
 

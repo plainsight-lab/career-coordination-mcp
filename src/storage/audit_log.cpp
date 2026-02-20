@@ -1,10 +1,19 @@
 #include "ccmcp/storage/audit_log.h"
 
+#include "ccmcp/storage/audit_chain.h"
+
 namespace ccmcp::storage {
 
 void InMemoryAuditLog::append(const AuditEvent& event) {
-  // Append-only in-memory store; deterministic persistence backend will replace this.
-  events_.push_back(event);
+  const auto it = last_hash_.find(event.trace_id);
+  const std::string& prev = (it != last_hash_.end()) ? it->second : std::string(kGenesisHash);
+
+  AuditEvent stored = event;
+  stored.previous_hash = prev;
+  stored.event_hash = compute_event_hash(event, prev);
+
+  last_hash_[event.trace_id] = stored.event_hash;
+  events_.push_back(std::move(stored));
 }
 
 std::vector<AuditEvent> InMemoryAuditLog::query(const std::string& trace_id) const {
