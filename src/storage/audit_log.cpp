@@ -31,4 +31,13 @@ std::vector<AuditEvent> InMemoryAuditLog::query(const std::string& trace_id) con
   return filtered;
 }
 
+std::vector<std::string> InMemoryAuditLog::list_trace_ids() const {
+  std::vector<std::string> ids;
+  ids.reserve(last_hash_.size());
+  for (const auto& [k, _] : last_hash_) {
+    ids.push_back(k);
+  }
+  return ids;
+}
+
 }  // namespace ccmcp::storage

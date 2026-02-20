@@ -54,6 +54,23 @@ bool handle_matching_strategy(McpServerConfig& config, const std::string& value)
   return false;
 }
 
+bool handle_audit_chain_verify(McpServerConfig& config, const std::string& value) {
+  if (value == "off") {
+    config.audit_chain_verify = AuditChainVerifyMode::kOff;
+    return true;
+  }
+  if (value == "warn") {
+    config.audit_chain_verify = AuditChainVerifyMode::kWarn;
+    return true;
+  }
+  if (value == "fail") {
+    config.audit_chain_verify = AuditChainVerifyMode::kFail;
+    return true;
+  }
+  std::cerr << "Invalid --audit-chain-verify: " << value << " (valid: off, warn, fail)\n";
+  std::exit(1);
+}
+
 // ────────────────────────────────────────────────────────────────
 // Option Registry
 // ────────────────────────────────────────────────────────────────
@@ -67,6 +84,8 @@ std::vector<apps::Option<McpServerConfig>> build_option_registry() {
        "Directory for SQLite-backed vector index (required with --vector-backend sqlite)",
        handle_vector_db_path},
       {"--matching-strategy", true, "Matching strategy (lexical|hybrid)", handle_matching_strategy},
+      {"--audit-chain-verify", true, "Startup audit chain verification mode (off|warn|fail)",
+       handle_audit_chain_verify},
   };
 }
 

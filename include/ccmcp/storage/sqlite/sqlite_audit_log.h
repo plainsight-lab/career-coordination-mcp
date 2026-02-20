@@ -23,6 +23,7 @@ class SqliteAuditLog final : public IAuditLog {
 
   void append(const AuditEvent& event) override;
   [[nodiscard]] std::vector<AuditEvent> query(const std::string& trace_id) const override;
+  [[nodiscard]] std::vector<std::string> list_trace_ids() const override;
 
  private:
   std::shared_ptr<SqliteDb> db_;

@@ -7,6 +7,7 @@
 #include "ccmcp/constitution/rules/schema_001.h"
 #include "ccmcp/constitution/rules/score_001.h"
 #include "ccmcp/core/hashing.h"
+#include "ccmcp/core/sha256.h"
 
 #include <algorithm>
 #include <memory>
@@ -87,10 +88,17 @@ ValidationReport ValidationEngine::validate(
   // Conditions (both required):
   //   1. report.status == kBlocked (at least one BLOCK finding exists)
   //   2. override.rule_id matches a BLOCK finding's rule_id
-  //   3. override.payload_hash == stable_hash64_hex(envelope.artifact_id)
+  //   3. override.payload_hash matches the hash of envelope.artifact_id using the
+  //      algorithm named by override.binding_hash_alg.
   // When applied: status → kOverridden; BLOCK findings remain (audit trail preserved).
+  //
+  // Algorithm dispatch:
+  //   "sha256"        — current algorithm (default for all new overrides from Slice 10+)
+  //   "stable_hash64" — legacy: overrides created before Slice 10; kept for forward-compat
   if (override.has_value() && report.status == ValidationStatus::kBlocked) {
-    const std::string expected_hash = core::stable_hash64_hex(envelope.artifact_id);
+    const std::string expected_hash = (override->binding_hash_alg == "stable_hash64")
+                                          ? core::stable_hash64_hex(envelope.artifact_id)
+                                          : core::sha256_hex(envelope.artifact_id);
     for (const auto& finding : report.findings) {
       if (finding.severity == FindingSeverity::kBlock && finding.rule_id == override->rule_id &&
           override->payload_hash == expected_hash) {

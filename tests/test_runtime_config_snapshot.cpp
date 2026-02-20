@@ -7,12 +7,12 @@
 
 using namespace ccmcp;
 
-// Helper: open an in-memory DB with schema v7 applied.
+// Helper: open an in-memory DB with schema v8 applied.
 static std::shared_ptr<storage::sqlite::SqliteDb> make_db() {
   auto result = storage::sqlite::SqliteDb::open(":memory:");
   REQUIRE(result.has_value());
   auto db = result.value();
-  auto schema = db->ensure_schema_v7();
+  auto schema = db->ensure_schema_v8();
   REQUIRE(schema.has_value());
   return db;
 }
@@ -52,7 +52,8 @@ TEST_CASE("sha256_hex: different inputs produce different digests", "[sha256]") 
 
 TEST_CASE("to_json/from_json: roundtrip preserves all fields", "[snapshot][serialization]") {
   domain::RuntimeConfigSnapshot snap;
-  snap.schema_version = 7;
+  snap.snapshot_format_version = 2;
+  snap.db_schema_version = 8;
   snap.vector_backend = "sqlite";
   snap.redis_host = "localhost";
   snap.redis_port = 6379;
@@ -62,7 +63,8 @@ TEST_CASE("to_json/from_json: roundtrip preserves all fields", "[snapshot][seria
   const std::string json_str = domain::to_json(snap);
   const domain::RuntimeConfigSnapshot restored = domain::from_json(json_str);
 
-  CHECK(restored.schema_version == 7);
+  CHECK(restored.snapshot_format_version == 2);
+  CHECK(restored.db_schema_version == 8);
   CHECK(restored.vector_backend == "sqlite");
   CHECK(restored.redis_host == "localhost");
   CHECK(restored.redis_port == 6379);
@@ -76,34 +78,38 @@ TEST_CASE("to_json: keys appear in alphabetical order", "[snapshot][serializatio
   snap.vector_backend = "inmemory";
   snap.redis_host = "127.0.0.1";
   snap.build_version = "0.4";
+  snap.db_schema_version = 8;
 
   const std::string json_str = domain::to_json(snap);
 
   // Verify the alphabetical key ordering in the serialized JSON.
-  // Keys: build_version < feature_flags < redis_db < redis_host < redis_port
-  //       < schema_version < vector_backend
+  // Keys: build_version < db_schema_version < feature_flags < redis_db < redis_host
+  //       < redis_port < snapshot_format_version < vector_backend
   const auto pos_build = json_str.find("\"build_version\"");
+  const auto pos_dbschema = json_str.find("\"db_schema_version\"");
   const auto pos_flags = json_str.find("\"feature_flags\"");
   const auto pos_rdb = json_str.find("\"redis_db\"");
   const auto pos_rhost = json_str.find("\"redis_host\"");
   const auto pos_rport = json_str.find("\"redis_port\"");
-  const auto pos_schema = json_str.find("\"schema_version\"");
+  const auto pos_snapver = json_str.find("\"snapshot_format_version\"");
   const auto pos_vector = json_str.find("\"vector_backend\"");
 
   REQUIRE(pos_build != std::string::npos);
+  REQUIRE(pos_dbschema != std::string::npos);
   REQUIRE(pos_flags != std::string::npos);
   REQUIRE(pos_rdb != std::string::npos);
   REQUIRE(pos_rhost != std::string::npos);
   REQUIRE(pos_rport != std::string::npos);
-  REQUIRE(pos_schema != std::string::npos);
+  REQUIRE(pos_snapver != std::string::npos);
   REQUIRE(pos_vector != std::string::npos);
 
-  CHECK(pos_build < pos_flags);
+  CHECK(pos_build < pos_dbschema);
+  CHECK(pos_dbschema < pos_flags);
   CHECK(pos_flags < pos_rdb);
   CHECK(pos_rdb < pos_rhost);
   CHECK(pos_rhost < pos_rport);
-  CHECK(pos_rport < pos_schema);
-  CHECK(pos_schema < pos_vector);
+  CHECK(pos_rport < pos_snapver);
+  CHECK(pos_snapver < pos_vector);
 }
 
 TEST_CASE("to_json: feature_flags serialized correctly when non-empty",
@@ -128,7 +134,8 @@ TEST_CASE("SqliteRuntimeSnapshotStore: save and get_snapshot_json roundtrip",
   storage::sqlite::SqliteRuntimeSnapshotStore store(db);
 
   domain::RuntimeConfigSnapshot snap;
-  snap.schema_version = 7;
+  snap.snapshot_format_version = 2;
+  snap.db_schema_version = 8;
   snap.vector_backend = "sqlite";
   snap.redis_host = "127.0.0.1";
   snap.redis_port = 6379;
@@ -144,7 +151,8 @@ TEST_CASE("SqliteRuntimeSnapshotStore: save and get_snapshot_json roundtrip",
   REQUIRE(retrieved.has_value());
 
   const domain::RuntimeConfigSnapshot restored = domain::from_json(retrieved.value());
-  CHECK(restored.schema_version == 7);
+  CHECK(restored.snapshot_format_version == 2);
+  CHECK(restored.db_schema_version == 8);
   CHECK(restored.vector_backend == "sqlite");
   CHECK(restored.redis_host == "127.0.0.1");
   CHECK(restored.redis_port == 6379);

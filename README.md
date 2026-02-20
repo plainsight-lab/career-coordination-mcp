@@ -150,14 +150,14 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 221 deterministic unit tests
+├── tests/                 # 226 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–9 complete).
-**Tests:** 221 cases · 1391 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–10 complete).
+**Tests:** 226 cases · 1414 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
@@ -427,6 +427,13 @@ The engine can integrate LLM providers later, but:
 - Non-root container execution (`ccmcp` UID 10001); Redis isolated to bridge network; no host ports exposed
 - Zero C++ changes — entrypoint script handles env var translation; all startup validation preserved
 - See [DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+**Slice 10 — Pre-v1 Governance Hardening** ✅
+- Override payload binding hash upgraded from `stable_hash64` placeholder to SHA-256; `binding_hash_alg` field preserves backward-compat for legacy overrides
+- `RuntimeConfigSnapshot` field renamed `schema_version` → `snapshot_format_version` (v2); `db_schema_version` field added; legacy deserialization retained for Slice 7 snapshots
+- `--audit-chain-verify <off|warn|fail>` flag: startup-time SHA-256 hash-chain integrity check across all stored traces; `fail` mode refuses startup on corruption
+- `list_trace_ids()` added to `IAuditLog` interface; implemented in `InMemoryAuditLog` and `SqliteAuditLog`
+- 5 new tests: `test_audit_chain_startup.cpp` — `[audit-chain]` tag
 
 **Planned:**
 - Real PDF extraction (Poppler/MuPDF) enabled by containerized toolchain

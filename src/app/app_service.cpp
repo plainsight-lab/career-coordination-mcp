@@ -5,6 +5,7 @@
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
 #include "ccmcp/core/hashing.h"
+#include "ccmcp/core/sha256.h"
 #include "ccmcp/indexing/index_build_pipeline.h"
 #include "ccmcp/ingest/ingest_result.h"
 
@@ -113,11 +114,12 @@ constitution::ValidationReport run_validation_pipeline(
   context.trace_id = trace_id;
 
   // Bind payload_hash to the current artifact before calling validate().
-  // The override's payload_hash must match stable_hash64_hex(envelope.artifact_id) for
-  // the CVE to apply the override. We compute and assign it here so the caller only
+  // The override's payload_hash must match sha256_hex(envelope.artifact_id) for the
+  // engine to apply the override.  We compute and assign it here so the caller only
   // needs to supply rule_id, operator_id, and reason.
   if (override.has_value()) {
-    override->payload_hash = core::stable_hash64_hex(envelope.artifact_id);
+    override->binding_hash_alg = "sha256";
+    override->payload_hash = core::sha256_hex(envelope.artifact_id);
   }
 
   // Run validation (with optional constitutional override)

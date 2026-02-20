@@ -45,6 +45,7 @@ add_executable(ccmcp_tests
   test_startup_guard.cpp
   test_runtime_config_snapshot.cpp
   test_audit_chain.cpp
+  test_audit_chain_startup.cpp
   test_interaction_ordering.cpp
   ../apps/mcp_server/startup_guard.cpp
 )

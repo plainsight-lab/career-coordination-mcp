@@ -10,10 +10,14 @@ namespace ccmcp::domain {
 // allowing operators to reconstruct the exact runtime environment from stored
 // artifacts alone.
 //
-// schema_version: 7 (introduced in v0.4 Slice 7)
+// snapshot_format_version: tracks the JSON schema of this struct itself.
+//   v1 = Slice 7 original (serialized key: "schema_version")
+//   v2 = Slice 10+ (serialized key: "snapshot_format_version"; adds db_schema_version)
+// db_schema_version: the applied SQLite schema version at startup (e.g. 8 after ensure_schema_v8).
 // Keys in the JSON representation are sorted alphabetically for determinism.
 struct RuntimeConfigSnapshot {
-  int schema_version{7};                             // NOLINT(readability-identifier-naming)
+  int snapshot_format_version{2};                    // NOLINT(readability-identifier-naming)
+  int db_schema_version{0};                          // NOLINT(readability-identifier-naming)
   std::string vector_backend;                        // NOLINT(readability-identifier-naming)
   std::string redis_host;                            // NOLINT(readability-identifier-naming)
   int redis_port{6379};                              // NOLINT(readability-identifier-naming)

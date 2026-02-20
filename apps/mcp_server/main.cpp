@@ -9,6 +9,7 @@
 #include "ccmcp/ingest/resume_ingestor.h"
 #include "ccmcp/interaction/redis_config.h"
 #include "ccmcp/interaction/redis_interaction_coordinator.h"
+#include "ccmcp/storage/audit_chain.h"
 #include "ccmcp/storage/audit_log.h"
 #include "ccmcp/storage/inmemory_atom_repository.h"
 #include "ccmcp/storage/inmemory_interaction_repository.h"
@@ -161,7 +162,8 @@ int main(int argc, char* argv[]) {
 
       const auto redis_cfg = interaction::parse_redis_uri(config.redis_uri.value()).value();
       domain::RuntimeConfigSnapshot snap;
-      snap.schema_version = 7;
+      snap.snapshot_format_version = 2;
+      snap.db_schema_version = 8;
       snap.vector_backend = std::string(vector::to_string(config.vector_backend));
       snap.redis_host = redis_cfg.host;
       snap.redis_port = redis_cfg.port;
@@ -170,6 +172,25 @@ int main(int argc, char* argv[]) {
       const std::string snap_json = domain::to_json(snap);
       const std::string snap_hash = core::sha256_hex(snap_json);
       snapshot_store.save(id_gen.next("snapshot"), snap_json, snap_hash, clock.now_iso8601());
+
+      if (config.audit_chain_verify != mcp::AuditChainVerifyMode::kOff) {
+        const auto trace_ids = audit_log.list_trace_ids();
+        bool any_invalid = false;
+        for (const auto& tid : trace_ids) {
+          const auto events = audit_log.query(tid);
+          const auto result = storage::verify_audit_chain(events);
+          if (!result.valid) {
+            std::cerr << "WARNING: Audit chain corrupt for trace " << tid << " at event "
+                      << result.first_invalid_index << ": " << result.error << "\n";
+            any_invalid = true;
+          }
+        }
+        if (any_invalid && config.audit_chain_verify == mcp::AuditChainVerifyMode::kFail) {
+          std::cerr << "Error: Audit chain verification failed (--audit-chain-verify fail). "
+                       "Refusing to start.\n";
+          return 1;
+        }
+      }
 
       mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
                              decision_store, id_gen,      clock,    config};
@@ -217,7 +238,8 @@ int main(int argc, char* argv[]) {
 
       const auto redis_cfg = interaction::parse_redis_uri(config.redis_uri.value()).value();
       domain::RuntimeConfigSnapshot snap;
-      snap.schema_version = 7;
+      snap.snapshot_format_version = 2;
+      snap.db_schema_version = 8;
       snap.vector_backend = std::string(vector::to_string(config.vector_backend));
       snap.redis_host = redis_cfg.host;
       snap.redis_port = redis_cfg.port;
@@ -226,6 +248,25 @@ int main(int argc, char* argv[]) {
       const std::string snap_json = domain::to_json(snap);
       const std::string snap_hash = core::sha256_hex(snap_json);
       snapshot_store.save(id_gen.next("snapshot"), snap_json, snap_hash, clock.now_iso8601());
+
+      if (config.audit_chain_verify != mcp::AuditChainVerifyMode::kOff) {
+        const auto trace_ids = audit_log.list_trace_ids();
+        bool any_invalid = false;
+        for (const auto& tid : trace_ids) {
+          const auto events = audit_log.query(tid);
+          const auto result = storage::verify_audit_chain(events);
+          if (!result.valid) {
+            std::cerr << "WARNING: Audit chain corrupt for trace " << tid << " at event "
+                      << result.first_invalid_index << ": " << result.error << "\n";
+            any_invalid = true;
+          }
+        }
+        if (any_invalid && config.audit_chain_verify == mcp::AuditChainVerifyMode::kFail) {
+          std::cerr << "Error: Audit chain verification failed (--audit-chain-verify fail). "
+                       "Refusing to start.\n";
+          return 1;
+        }
+      }
 
       mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
                              decision_store, id_gen,      clock,    config};

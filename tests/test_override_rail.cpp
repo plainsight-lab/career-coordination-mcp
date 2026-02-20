@@ -3,7 +3,7 @@
 #include "ccmcp/constitution/rule.h"
 #include "ccmcp/constitution/validation_engine.h"
 #include "ccmcp/constitution/validation_report.h"
-#include "ccmcp/core/hashing.h"
+#include "ccmcp/core/sha256.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
@@ -38,7 +38,7 @@ TEST_CASE("BLOCK Override Rail — CVE integration", "[override][validation]") {
   const std::string artifact_id = "match-report-opp-override-test";
   const auto envelope = make_blocked_envelope(artifact_id);
   const auto context = make_context();
-  const std::string correct_hash = ccmcp::core::stable_hash64_hex(artifact_id);
+  const std::string correct_hash = ccmcp::core::sha256_hex(artifact_id);
 
   SECTION("A: BLOCK without override yields kBlocked") {
     const auto report = engine.validate(envelope, context);
@@ -118,18 +118,22 @@ TEST_CASE("ConstitutionOverrideRequest — deterministic serialization",
     // Same input → same JSON string (deterministic)
     REQUIRE(j1.dump() == j2.dump());
 
-    // Keys are alphabetically sorted: operator_id < payload_hash < reason < rule_id
+    // Keys are alphabetically sorted:
+    // binding_hash_alg < operator_id < payload_hash < reason < rule_id
     const std::string serialized = j1.dump();
+    const auto pos_binding = serialized.find("binding_hash_alg");
     const auto pos_operator = serialized.find("operator_id");
     const auto pos_payload = serialized.find("payload_hash");
     const auto pos_reason = serialized.find("reason");
     const auto pos_rule = serialized.find("rule_id");
 
+    REQUIRE(pos_binding != std::string::npos);
     REQUIRE(pos_operator != std::string::npos);
     REQUIRE(pos_payload != std::string::npos);
     REQUIRE(pos_reason != std::string::npos);
     REQUIRE(pos_rule != std::string::npos);
 
+    REQUIRE(pos_binding < pos_operator);
     REQUIRE(pos_operator < pos_payload);
     REQUIRE(pos_payload < pos_reason);
     REQUIRE(pos_reason < pos_rule);
@@ -141,6 +145,7 @@ TEST_CASE("ConstitutionOverrideRequest — deterministic serialization",
     original.operator_id = "operator-bob";
     original.reason = "Source hash mismatch was caused by a known tooling bug";
     original.payload_hash = "feedcafe00000001";
+    original.binding_hash_alg = "sha256";
 
     const auto j = ccmcp::constitution::override_request_to_json(original);
     const auto restored = ccmcp::constitution::override_request_from_json(j);
@@ -149,17 +154,18 @@ TEST_CASE("ConstitutionOverrideRequest — deterministic serialization",
     REQUIRE(restored.operator_id == original.operator_id);
     REQUIRE(restored.reason == original.reason);
     REQUIRE(restored.payload_hash == original.payload_hash);
+    REQUIRE(restored.binding_hash_alg == original.binding_hash_alg);
   }
 
-  SECTION("D3: payload_hash is deterministic — stable_hash64_hex same input → same output") {
+  SECTION("D3: payload_hash is deterministic — sha256_hex same input → same output") {
     const std::string artifact_id = "match-report-opp-serial-test";
-    const std::string hash_a = ccmcp::core::stable_hash64_hex(artifact_id);
-    const std::string hash_b = ccmcp::core::stable_hash64_hex(artifact_id);
+    const std::string hash_a = ccmcp::core::sha256_hex(artifact_id);
+    const std::string hash_b = ccmcp::core::sha256_hex(artifact_id);
 
     REQUIRE(hash_a == hash_b);
     REQUIRE(!hash_a.empty());
     // Different artifact IDs produce different hashes
-    const std::string hash_c = ccmcp::core::stable_hash64_hex("match-report-different");
+    const std::string hash_c = ccmcp::core::sha256_hex("match-report-different");
     REQUIRE(hash_a != hash_c);
   }
 }

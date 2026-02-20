@@ -86,6 +86,24 @@ std::vector<AuditEvent> SqliteAuditLog::query(const std::string& trace_id) const
   return result;
 }
 
+std::vector<std::string> SqliteAuditLog::list_trace_ids() const {
+  const char* sql = "SELECT DISTINCT trace_id FROM audit_events";
+
+  PreparedStatement stmt(db_->connection(), sql);
+  if (!stmt.is_valid()) {
+    return {};
+  }
+
+  std::vector<std::string> ids;
+  while (sqlite3_step(stmt.get()) == SQLITE_ROW) {
+    const auto* raw = sqlite3_column_text(stmt.get(), 0);  // NOLINT
+    if (raw != nullptr) {
+      ids.emplace_back(reinterpret_cast<const char*>(raw));  // NOLINT
+    }
+  }
+  return ids;
+}
+
 SqliteAuditLog::AppendState SqliteAuditLog::get_append_state(const std::string& trace_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
