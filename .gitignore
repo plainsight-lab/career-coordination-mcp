@@ -1,6 +1,7 @@
 # Build directories
 /build/
 /build-vcpkg/
+/build-docker/
 /vcpkg_installed/
 
 # CMake/CTest output

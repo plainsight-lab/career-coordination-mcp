@@ -156,7 +156,7 @@ career-coordination-mcp/
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–8 complete).
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–9 complete).
 **Tests:** 221 cases · 1391 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
@@ -419,8 +419,17 @@ The engine can integrate LLM providers later, but:
 - Schema v8: `ALTER TABLE audit_events ADD COLUMN previous_hash / event_hash TEXT NOT NULL DEFAULT ''`
 - New invariant: every appended audit event carries a tamper-evident SHA-256 hash linking it to its predecessor
 
+**Slice 9 — Dockerization Readiness (Local-Only Containerized Deployment Blueprint)** ✅
+- Multi-stage `Dockerfile`: `ubuntu:22.04` builder → `debian:bookworm-slim` runtime
+- Static vcpkg linkage via custom overlay triplet (`docker/triplets/x64-linux-static-release.cmake`)
+- `scripts/docker-entrypoint.sh` — validates `REDIS_HOST`, constructs CLI args, `exec`s `mcp_server`
+- `docker-compose.yml` — `redis:7-alpine` + app services, bind-mounted `./data:/data` for SQLite persistence
+- Non-root container execution (`ccmcp` UID 10001); Redis isolated to bridge network; no host ports exposed
+- Zero C++ changes — entrypoint script handles env var translation; all startup validation preserved
+- See [DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
 **Planned:**
-- Containerization (enables Poppler/MuPDF for real PDF extraction)
+- Real PDF extraction (Poppler/MuPDF) enabled by containerized toolchain
 - Resume composition workflows (atom selection → draft → validation → output)
 - Structured resume patching (constitutional diff and patch operations)
 - Real LanceDB C++ SDK integration (currently `SqliteEmbeddingIndex` fills this slot)

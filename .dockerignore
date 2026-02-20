@@ -1,0 +1,40 @@
+# .dockerignore — Exclude files from the Docker build context.
+#
+# Keeping the context small speeds up 'docker build' and prevents
+# accidental inclusion of local build artifacts or secrets.
+
+# Build directories (macOS / local builds)
+build/
+build-vcpkg/
+build-docker/
+vcpkg_installed/
+
+# Git history (large; vcpkg is cloned fresh in the Dockerfile)
+.git/
+
+# IDE and editor artifacts
+.cache/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Local data directories (never include database files in the image)
+data/
+*.db
+*.sqlite
+*.sqlite3
+lancedb_data/
+vector_index/
+
+# Test artifacts
+Testing/
+
+# Prompt and dev notes
+prompt.md
+test_resume.md
+
+# CI/CD secrets (if present)
+.env
+.env.*

@@ -1,0 +1,61 @@
+# career-coordination-mcp — Local development service composition.
+#
+# Services:
+#   redis  — Redis 7 (interaction coordinator, required)
+#   app    — MCP server (connects to redis, persists to ./data via bind mount)
+#
+# Usage:
+#   mkdir -p data
+#   docker compose up
+#
+# See docs/DEPLOYMENT.md for full configuration reference.
+
+services:
+
+  # ── Redis interaction coordinator ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - ccmcp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  # ── MCP server ───────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # Required: Redis connection.
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      # Persistence: SQLite database path inside the data volume.
+      DB_PATH: /data/ccmcp.db
+      # Vector storage: persist embeddings in the same data volume.
+      VECTOR_BACKEND: sqlite
+      VECTOR_DB_PATH: /data/vectors
+    volumes:
+      # Bind-mount ./data from the host for SQLite persistence and inspection.
+      # Create this directory before running: mkdir -p data
+      - ./data:/data
+    networks:
+      - ccmcp-network
+    # MCP protocol communicates over stdio; keep stdin open for the client.
+    stdin_open: true
+    tty: false
+    restart: "no"
+
+# ── Network ──────────────────────────────────────────────────────────────────
+networks:
+  ccmcp-network:
+    driver: bridge
+    name: ccmcp-network
