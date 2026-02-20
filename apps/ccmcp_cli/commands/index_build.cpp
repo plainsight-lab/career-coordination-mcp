@@ -3,7 +3,6 @@
 #include "ccmcp/core/clock.h"
 #include "ccmcp/core/id_generator.h"
 #include "ccmcp/embedding/embedding_provider.h"
-#include "ccmcp/indexing/index_build_pipeline.h"
 #include "ccmcp/storage/sqlite/sqlite_atom_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_audit_log.h"
 #include "ccmcp/storage/sqlite/sqlite_db.h"
@@ -14,6 +13,7 @@
 #include "ccmcp/vector/sqlite_embedding_index.h"
 #include "ccmcp/vector/vector_backend.h"
 
+#include "index_build_logic.h"
 #include "shared/arg_parser.h"
 #include <filesystem>
 #include <iostream>
@@ -137,15 +137,6 @@ int cmd_index_build(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-array
   std::cout << "Starting index-build: db=" << config.db_path << " scope=" << config.scope
             << " backend=" << ccmcp::vector::to_string(config.vector_backend) << "\n";
 
-  const auto result = ccmcp::indexing::run_index_build(atom_repo, resume_store, opp_repo, run_store,
-                                                       *vector_index_owner, embedding_provider,
-                                                       audit_log, id_gen, clock, build_config);
-
-  std::cout << "Index build complete:\n";
-  std::cout << "  run_id:  " << result.run_id << "\n";
-  std::cout << "  indexed: " << result.indexed_count << "\n";
-  std::cout << "  skipped: " << result.skipped_count << "\n";
-  std::cout << "  stale:   " << result.stale_count << "\n";
-
-  return 0;
+  return execute_index_build(atom_repo, opp_repo, resume_store, run_store, *vector_index_owner,
+                             embedding_provider, audit_log, id_gen, clock, build_config);
 }

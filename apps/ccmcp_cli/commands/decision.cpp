@@ -1,12 +1,9 @@
 #include "decision.h"
 
-#include "ccmcp/app/app_service.h"
-#include "ccmcp/domain/decision_record.h"
 #include "ccmcp/storage/sqlite/sqlite_db.h"
 #include "ccmcp/storage/sqlite/sqlite_decision_store.h"
 
-#include <nlohmann/json.hpp>
-
+#include "decision_logic.h"
 #include "shared/arg_parser.h"
 #include <iostream>
 #include <optional>
@@ -65,15 +62,7 @@ int cmd_get_decision(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arra
   }
 
   ccmcp::storage::sqlite::SqliteDecisionStore store(db);
-  auto record = ccmcp::app::fetch_decision(config.decision_id.value(), store);
-
-  if (!record.has_value()) {
-    std::cerr << "Decision not found: " << config.decision_id.value() << "\n";
-    return 1;
-  }
-
-  std::cout << ccmcp::domain::decision_record_to_json(record.value()).dump(2) << "\n";
-  return 0;
+  return execute_get_decision(config.decision_id.value(), store);
 }
 
 int cmd_list_decisions(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arrays)
@@ -102,15 +91,5 @@ int cmd_list_decisions(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-ar
   }
 
   ccmcp::storage::sqlite::SqliteDecisionStore store(db);
-  auto records = ccmcp::app::list_decisions_by_trace(config.trace_id.value(), store);
-
-  nlohmann::json out;
-  out["trace_id"] = config.trace_id.value();
-  out["decisions"] = nlohmann::json::array();
-  for (const auto& rec : records) {
-    out["decisions"].push_back(ccmcp::domain::decision_record_to_json(rec));
-  }
-
-  std::cout << out.dump(2) << "\n";
-  return 0;
+  return execute_list_decisions(config.trace_id.value(), store);
 }

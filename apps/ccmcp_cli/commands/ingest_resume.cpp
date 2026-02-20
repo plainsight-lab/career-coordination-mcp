@@ -6,6 +6,7 @@
 #include "ccmcp/storage/sqlite/sqlite_db.h"
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
 
+#include "ingest_resume_logic.h"
 #include "shared/arg_parser.h"
 #include <iostream>
 #include <optional>
@@ -60,27 +61,5 @@ int cmd_ingest_resume(int argc, char* argv[]) {  // NOLINT(modernize-avoid-c-arr
   ccmcp::core::DeterministicIdGenerator id_gen;
   ccmcp::core::SystemClock clock;
 
-  std::cout << "Ingesting resume from: " << file_path << "\n";
-  ccmcp::ingest::IngestOptions ingest_options;
-  auto result = ingestor->ingest_file(file_path, ingest_options, id_gen, clock);
-
-  if (!result.has_value()) {
-    std::cerr << "Ingestion failed: " << result.error() << "\n";
-    return 1;
-  }
-
-  const auto& ingested_resume = result.value();
-  resume_store.upsert(ingested_resume);
-
-  std::cout << "Success!\n";
-  std::cout << "  Resume ID: " << ingested_resume.resume_id.value << "\n";
-  std::cout << "  Resume hash: " << ingested_resume.resume_hash << "\n";
-  std::cout << "  Extraction method: " << ingested_resume.meta.extraction_method << "\n";
-  std::cout << "  Ingestion version: " << ingested_resume.meta.ingestion_version << "\n";
-  if (ingested_resume.meta.source_path.has_value()) {
-    std::cout << "  Source path: " << ingested_resume.meta.source_path.value() << "\n";
-  }
-  std::cout << "  Resume content length: " << ingested_resume.resume_md.size() << " bytes\n";
-
-  return 0;
+  return execute_ingest_resume(file_path, *ingestor, resume_store, id_gen, clock);
 }

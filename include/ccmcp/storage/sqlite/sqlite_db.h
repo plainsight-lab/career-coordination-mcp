@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef CCMCP_TRANSPORT_BOUNDARY_GUARD
+#error "Concrete storage/redis header included in a guarded translation unit — use interfaces only."
+#endif
+
 #include "ccmcp/core/result.h"
 
 #include <memory>
