@@ -12,13 +12,46 @@ std::optional<RedisConfig> parse_redis_uri(const std::string& uri) {
 
   std::string_view view{uri};
   std::string_view host_port_view;
+  bool is_redis_scheme = false;
 
   if (view.starts_with("tcp://")) {
     host_port_view = view.substr(6);
   } else if (view.starts_with("redis://")) {
     host_port_view = view.substr(8);
+    is_redis_scheme = true;
   } else {
     return std::nullopt;
+  }
+
+  if (host_port_view.empty()) {
+    return std::nullopt;
+  }
+
+  // For redis:// URIs only: strip optional /N database-index suffix before parsing host:port.
+  int redis_db = 0;
+  if (is_redis_scheme) {
+    const auto slash_pos = host_port_view.find('/');
+    if (slash_pos != std::string_view::npos) {
+      const std::string_view db_view = host_port_view.substr(slash_pos + 1);
+      host_port_view = host_port_view.substr(0, slash_pos);
+
+      // Validate: all characters must be decimal digits.
+      for (const char c : db_view) {
+        if (c < '0' || c > '9') {
+          return std::nullopt;
+        }
+      }
+
+      try {
+        redis_db = std::stoi(std::string{db_view});
+      } catch (...) {
+        return std::nullopt;
+      }
+
+      if (redis_db < 0) {
+        return std::nullopt;
+      }
+    }
   }
 
   if (host_port_view.empty()) {
@@ -63,7 +96,7 @@ std::optional<RedisConfig> parse_redis_uri(const std::string& uri) {
     return std::nullopt;
   }
 
-  return RedisConfig{uri, host, port};
+  return RedisConfig{uri, host, port, redis_db};
 }
 
 std::string redis_config_to_log_string(const RedisConfig& config) {

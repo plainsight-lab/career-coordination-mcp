@@ -150,14 +150,14 @@ career-coordination-mcp/
 │   │                      # get-decision, list-decisions
 │   └── mcp_server/        # MCP JSON-RPC server
 │       └── handlers/      # Per-tool handler implementations
-├── tests/                 # 201 deterministic unit tests
+├── tests/                 # 212 deterministic unit tests
 └── docs/                  # Architecture, governance, and design specs
 ```
 
 ## Current Phase — v0.4 In Progress
 
-**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–5 merged).
-**Tests:** 201 cases · 1306 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
+**Status:** ✅ v0.3 complete — v0.4 in progress (Slices 1–7 complete).
+**Tests:** 212 cases · 1357 assertions · 0 failures · 7 skipped (Redis + SQLite-vector opt-in)
 **v0.3 Readiness report:** [docs/V0_3_READINESS_REPORT.md](docs/V0_3_READINESS_REPORT.md)
 
 ### Feature Matrix
@@ -386,6 +386,28 @@ The engine can integrate LLM providers later, but:
 - CLI: `--override-rule`, `--operator`, `--reason` — all-or-nothing; partial set fails fast
 - Override logic confined to `app_service`/CVE layers — no storage adapter participation
 - See [CONSTITUTIONAL_RULES.md](docs/CONSTITUTIONAL_RULES.md) — BLOCK Override Rail section
+
+**Slice 5 — Redis-First Operational Posture** ✅
+- `--redis <uri>` is required at MCP server startup; no in-memory fallback in production paths
+- `InMemoryInteractionCoordinator` removed from all real code paths; `RedisInteractionCoordinator` only
+- `redis-health` CLI command verifies liveness and round-trip before use
+- Startup fail-fast on missing or unresolvable Redis URI
+
+**Slice 6 — Transport/Storage Boundary Hardening** ✅
+- `CCMCP_TRANSPORT_BOUNDARY_GUARD` `#error` on 11 concrete sqlite/redis headers
+- `ccmcp_cli_logic` and `mcp_transport_logic` OBJECT libraries compiled with the guard flag
+- Logic layers include interfaces only; concrete objects constructed only in wiring `.cpp` + `main.cpp`
+- Compile-time enforcement: cross-boundary coupling fails the build immediately
+
+**Slice 7 — Deterministic Runtime Configuration Snapshotting** ✅
+- `sha256_hex()` — pure C++ FIPS 180-4 SHA-256, no new dependencies
+- `core::kBuildVersion` constant (`"0.4"`) for provenance labeling
+- `RedisConfig::redis_db` field; `redis://host:port/N` URI parsing for database index
+- `RuntimeConfigSnapshot` domain type + deterministic JSON serialization (alphabetically sorted keys)
+- `IRuntimeSnapshotStore` interface + `SqliteRuntimeSnapshotStore` (schema v7, boundary-guarded)
+- Schema v7: `runtime_snapshots` table — `run_id`, `snapshot_json`, `snapshot_hash`, `created_at`
+- MCP server emits one snapshot per process launch, before `run_server_loop`, in both code paths
+- New invariant: every run with a persisted DB has a matching `runtime_snapshots` row
 
 **Planned:**
 - Containerization (enables Poppler/MuPDF for real PDF extraction)

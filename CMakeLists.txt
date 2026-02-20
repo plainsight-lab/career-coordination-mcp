@@ -23,6 +23,7 @@ find_package(pugixml CONFIG REQUIRED)
 
 add_library(ccmcp
   src/core/hashing.cpp
+  src/core/sha256.cpp
   src/core/id_generator.cpp
   src/core/clock.cpp
   src/domain/experience_atom.cpp
@@ -65,8 +66,10 @@ add_library(ccmcp
   src/indexing/index_build_pipeline.cpp
   src/storage/sqlite/sqlite_index_run_store.cpp
   src/domain/decision_record.cpp
+  src/domain/runtime_config_snapshot.cpp
   src/storage/decision_store.cpp
   src/storage/sqlite/sqlite_decision_store.cpp
+  src/storage/sqlite/sqlite_runtime_snapshot_store.cpp
   src/embedding/deterministic_stub_embedding_provider.cpp
   src/vector/null_embedding_index.cpp
   src/vector/inmemory_embedding_index.cpp

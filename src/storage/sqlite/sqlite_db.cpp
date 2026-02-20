@@ -152,6 +152,19 @@ INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (6, datetime('now'));
 )";
 
+// Embedded schema v7 SQL (adds runtime_snapshots for startup provenance capture)
+constexpr const char* kSchemaV7 = R"(
+CREATE TABLE IF NOT EXISTS runtime_snapshots (
+  run_id        TEXT PRIMARY KEY,
+  snapshot_json TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (7, datetime('now'));
+)";
+
 // Embedded schema v4 SQL (adds index_runs + index_entries for embedding lifecycle)
 constexpr const char* kSchemaV4 = R"(
 CREATE TABLE IF NOT EXISTS index_runs (
@@ -349,6 +362,28 @@ core::Result<bool, std::string> SqliteDb::ensure_schema_v6() {
     std::string error = err_msg != nullptr ? err_msg : "Unknown error";
     sqlite3_free(err_msg);
     return core::Result<bool, std::string>::err("Failed to apply schema v6: " + error);
+  }
+
+  return core::Result<bool, std::string>::ok(true);
+}
+
+core::Result<bool, std::string> SqliteDb::ensure_schema_v7() {
+  // Ensure v6 is applied first
+  auto v6_result = ensure_schema_v6();
+  if (!v6_result.has_value()) {
+    return v6_result;
+  }
+
+  if (get_schema_version() >= 7) {
+    return core::Result<bool, std::string>::ok(true);
+  }
+
+  char* err_msg = nullptr;
+  int rc = sqlite3_exec(db_.get(), kSchemaV7, nullptr, nullptr, &err_msg);
+  if (rc != SQLITE_OK) {
+    std::string error = err_msg != nullptr ? err_msg : "Unknown error";
+    sqlite3_free(err_msg);
+    return core::Result<bool, std::string>::err("Failed to apply schema v7: " + error);
   }
 
   return core::Result<bool, std::string>::ok(true);

@@ -2,6 +2,9 @@
 #include "ccmcp/core/clock.h"
 #include "ccmcp/core/id_generator.h"
 #include "ccmcp/core/services.h"
+#include "ccmcp/core/sha256.h"
+#include "ccmcp/core/version.h"
+#include "ccmcp/domain/runtime_config_snapshot.h"
 #include "ccmcp/embedding/embedding_provider.h"
 #include "ccmcp/ingest/resume_ingestor.h"
 #include "ccmcp/interaction/redis_config.h"
@@ -18,6 +21,7 @@
 #include "ccmcp/storage/sqlite/sqlite_interaction_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_opportunity_repository.h"
 #include "ccmcp/storage/sqlite/sqlite_resume_store.h"
+#include "ccmcp/storage/sqlite/sqlite_runtime_snapshot_store.h"
 #include "ccmcp/vector/inmemory_embedding_index.h"
 #include "ccmcp/vector/sqlite_embedding_index.h"
 #include "ccmcp/vector/vector_backend.h"
@@ -131,8 +135,8 @@ int main(int argc, char* argv[]) {
     }
 
     auto db = db_result.value();
-    // ensure_schema_v6 chains v1→v5; all schema migrations are idempotent.
-    auto schema_result = db->ensure_schema_v6();
+    // ensure_schema_v7 chains v1→v6; all schema migrations are idempotent.
+    auto schema_result = db->ensure_schema_v7();
     if (!schema_result.has_value()) {
       std::cerr << "Failed to initialize schema: " << schema_result.error() << "\n";
       return 1;
@@ -145,6 +149,7 @@ int main(int argc, char* argv[]) {
     storage::sqlite::SqliteResumeStore resume_store(db);
     storage::sqlite::SqliteIndexRunStore index_run_store(db);
     storage::sqlite::SqliteDecisionStore decision_store(db);
+    storage::sqlite::SqliteRuntimeSnapshotStore snapshot_store(db);
 
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
@@ -153,6 +158,19 @@ int main(int argc, char* argv[]) {
 
     try {
       interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
+
+      const auto redis_cfg = interaction::parse_redis_uri(config.redis_uri.value()).value();
+      domain::RuntimeConfigSnapshot snap;
+      snap.schema_version = 7;
+      snap.vector_backend = std::string(vector::to_string(config.vector_backend));
+      snap.redis_host = redis_cfg.host;
+      snap.redis_port = redis_cfg.port;
+      snap.redis_db = redis_cfg.redis_db;
+      snap.build_version = core::kBuildVersion;
+      const std::string snap_json = domain::to_json(snap);
+      const std::string snap_hash = core::sha256_hex(snap_json);
+      snapshot_store.save(id_gen.next("snapshot"), snap_json, snap_hash, clock.now_iso8601());
+
       mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
                              decision_store, id_gen,      clock,    config};
       mcp::run_server_loop(ctx);
@@ -174,7 +192,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto mem_db = mem_db_result.value();
-    auto mem_schema_result = mem_db->ensure_schema_v6();
+    auto mem_schema_result = mem_db->ensure_schema_v7();
     if (!mem_schema_result.has_value()) {
       std::cerr << "Failed to initialize in-memory schema: " << mem_schema_result.error() << "\n";
       return 1;
@@ -187,6 +205,7 @@ int main(int argc, char* argv[]) {
     storage::sqlite::SqliteResumeStore resume_store(mem_db);
     storage::sqlite::SqliteIndexRunStore index_run_store(mem_db);
     storage::sqlite::SqliteDecisionStore decision_store(mem_db);
+    storage::sqlite::SqliteRuntimeSnapshotStore snapshot_store(mem_db);
 
     embedding::DeterministicStubEmbeddingProvider embedding_provider;
 
@@ -195,6 +214,19 @@ int main(int argc, char* argv[]) {
 
     try {
       interaction::RedisInteractionCoordinator coordinator(config.redis_uri.value());
+
+      const auto redis_cfg = interaction::parse_redis_uri(config.redis_uri.value()).value();
+      domain::RuntimeConfigSnapshot snap;
+      snap.schema_version = 7;
+      snap.vector_backend = std::string(vector::to_string(config.vector_backend));
+      snap.redis_host = redis_cfg.host;
+      snap.redis_port = redis_cfg.port;
+      snap.redis_db = redis_cfg.redis_db;
+      snap.build_version = core::kBuildVersion;
+      const std::string snap_json = domain::to_json(snap);
+      const std::string snap_hash = core::sha256_hex(snap_json);
+      snapshot_store.save(id_gen.next("snapshot"), snap_json, snap_hash, clock.now_iso8601());
+
       mcp::ServerContext ctx{services,       coordinator, ingestor, resume_store, index_run_store,
                              decision_store, id_gen,      clock,    config};
       run_server_loop(ctx);

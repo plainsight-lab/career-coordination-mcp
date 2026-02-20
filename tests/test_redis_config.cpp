@@ -42,6 +42,23 @@ TEST_CASE("parse_redis_uri: unrecognised or missing scheme returns nullopt", "[r
   CHECK_FALSE(parse_redis_uri("localhost:6379").has_value());
 }
 
+// ── parse_redis_uri: redis_db parsing ───────────────────────────────────────
+
+TEST_CASE("parse_redis_uri: redis://host:port/N sets redis_db", "[redis][config]") {
+  const auto result = parse_redis_uri("redis://localhost:6379/1");
+  REQUIRE(result.has_value());
+  CHECK(result->host == "localhost");
+  CHECK(result->port == 6379);
+  CHECK(result->redis_db == 1);
+  CHECK(result->uri == "redis://localhost:6379/1");
+}
+
+TEST_CASE("parse_redis_uri: redis://host:port without /N has redis_db=0", "[redis][config]") {
+  const auto result = parse_redis_uri("redis://localhost:6379");
+  REQUIRE(result.has_value());
+  CHECK(result->redis_db == 0);
+}
+
 // ── redis_config_to_log_string: determinism ─────────────────────────────────
 
 TEST_CASE("redis_config_to_log_string: deterministic — same input produces same output",

@@ -62,6 +62,9 @@ class SqliteDb {
   // Apply schema v6 if not already applied (adds id_counters table for monotonic run IDs)
   [[nodiscard]] core::Result<bool, std::string> ensure_schema_v6();
 
+  // Apply schema v7 if not already applied (adds runtime_snapshots table)
+  [[nodiscard]] core::Result<bool, std::string> ensure_schema_v7();
+
   // Execute SQL statement (for non-query operations)
   [[nodiscard]] core::Result<bool, std::string> exec(const std::string& sql);
 
