@@ -5,6 +5,8 @@
 #include <nlohmann/json.hpp>
 
 #include <sqlite3.h>
+#include <stdexcept>
+#include <string>
 
 namespace ccmcp::storage::sqlite {
 
@@ -27,7 +29,7 @@ void SqliteAuditLog::append(const AuditEvent& event) {
 
   PreparedStatement stmt(db_->connection(), sql);
   if (!stmt.is_valid()) {
-    return;
+    throw std::runtime_error("SqliteAuditLog::append failed to prepare: " + stmt.error());
   }
 
   sqlite3_bind_text(stmt.get(), 1, event.event_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -40,7 +42,11 @@ void SqliteAuditLog::append(const AuditEvent& event) {
   sqlite3_bind_text(stmt.get(), 8, state.previous_hash.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt.get(), 9, event_hash.c_str(), -1, SQLITE_TRANSIENT);
 
-  sqlite3_step(stmt.get());
+  const int rc = sqlite3_step(stmt.get());
+  if (rc != SQLITE_DONE) {
+    throw std::runtime_error("SqliteAuditLog::append failed: " +
+                             std::string(sqlite3_errmsg(db_->connection())));
+  }
 }
 
 std::vector<AuditEvent> SqliteAuditLog::query(const std::string& trace_id) const {

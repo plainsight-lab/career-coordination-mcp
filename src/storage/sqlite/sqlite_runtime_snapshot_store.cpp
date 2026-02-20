@@ -1,6 +1,8 @@
 #include "ccmcp/storage/sqlite/sqlite_runtime_snapshot_store.h"
 
 #include <sqlite3.h>
+#include <stdexcept>
+#include <string>
 
 namespace ccmcp::storage::sqlite {
 
@@ -17,7 +19,7 @@ void SqliteRuntimeSnapshotStore::save(const std::string& run_id, const std::stri
 
   PreparedStatement stmt(db_->connection(), sql);
   if (!stmt.is_valid()) {
-    return;
+    throw std::runtime_error("SqliteRuntimeSnapshotStore::save failed to prepare: " + stmt.error());
   }
 
   sqlite3_bind_text(stmt.get(), 1, run_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -25,7 +27,11 @@ void SqliteRuntimeSnapshotStore::save(const std::string& run_id, const std::stri
   sqlite3_bind_text(stmt.get(), 3, snapshot_hash.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt.get(), 4, created_at.c_str(), -1, SQLITE_TRANSIENT);
 
-  sqlite3_step(stmt.get());
+  const int rc = sqlite3_step(stmt.get());
+  if (rc != SQLITE_DONE) {
+    throw std::runtime_error("SqliteRuntimeSnapshotStore::save failed: " +
+                             std::string(sqlite3_errmsg(db_->connection())));
+  }
 }
 
 std::optional<std::string> SqliteRuntimeSnapshotStore::get_snapshot_json(

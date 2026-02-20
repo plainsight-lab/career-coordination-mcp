@@ -120,9 +120,9 @@ int main(int argc, char* argv[]) {
   }
   vector::IEmbeddingIndex& vector_index = *vector_index_owner;
 
-  // Inject deterministic generators for reproducible behavior
-  core::DeterministicIdGenerator id_gen;
-  core::FixedClock clock("2026-01-01T00:00:00Z");
+  // Production generators: real wall-clock timestamps and globally unique IDs.
+  core::SystemIdGenerator id_gen;
+  core::SystemClock clock;
 
   // Initialize repositories based on --db flag.
   // Redis coordinator is always used — validated at startup; uri is guaranteed present.
